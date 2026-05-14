@@ -137,8 +137,9 @@ Located at `src/shared/components/PwaRegister.tsx`, this client component:
 
 1. Runs on mount (client-side only)
 2. Checks for `serviceWorker` support in the browser
-3. Registers `/sw.js` silently (errors are swallowed to avoid blocking the app)
-4. Renders nothing (`return null`) — it's a side-effect-only component
+3. Skips service worker registration on local loopback hosts and in development mode, and removes stale OmniRoute registrations there
+4. Registers `/sw.js` silently on non-local deployments (errors are swallowed to avoid blocking the app)
+5. Renders nothing (`return null`) — it's a side-effect-only component
 
 ## Use With Termux (Android)
 
