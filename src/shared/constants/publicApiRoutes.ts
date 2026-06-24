@@ -66,6 +66,7 @@ const PUBLIC_READONLY_CORS_API_ROUTES = [
   "/api/health/ping",
   "/api/monitoring/health",
   "/api/settings/require-login",
+  "/api/health",
 ];
 
 // Read-only routes public by EXACT path, WITHOUT the CORS relaxation.
