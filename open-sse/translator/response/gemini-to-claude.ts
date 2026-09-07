@@ -2,6 +2,7 @@ import { register } from "../registry.ts";
 import { FORMATS } from "../formats.ts";
 import { isAbortFinishReason } from "../../utils/finishReason.ts";
 import { restoreClaudeToolName } from "../../services/claudeCodeToolRemapper.ts";
+import { hasToolCallShim, applyToolCallShimToBuffer } from "../helpers/toolCallShim.ts";
 import {
   buildGeminiThoughtSignatureKey,
   storeGeminiThoughtSignature,
@@ -261,7 +262,10 @@ export function geminiToClaudeResponse(chunk, state) {
           },
         });
 
-        const argsStr = JSON.stringify(fc.args || {});
+        let argsStr = JSON.stringify(fc.args || {});
+        if (hasToolCallShim(restoredToolName)) {
+          argsStr = applyToolCallShimToBuffer(restoredToolName, argsStr);
+        }
         results.push({
           type: "content_block_delta",
           index: idx,
@@ -388,20 +392,34 @@ export function geminiToClaudeResponse(chunk, state) {
   const usageMeta = response.usageMetadata || chunk.usageMetadata;
   if (usageMeta && typeof usageMeta === "object") {
     const inputTokens =
-      typeof usageMeta.promptTokenCount === "number" ? usageMeta.promptTokenCount : 0;
+      typeof usageMeta.promptTokenCount === "number" && Number.isFinite(usageMeta.promptTokenCount)
+        ? usageMeta.promptTokenCount
+        : 0;
     const candidatesTokens =
-      typeof usageMeta.candidatesTokenCount === "number" ? usageMeta.candidatesTokenCount : 0;
+      typeof usageMeta.candidatesTokenCount === "number" &&
+      Number.isFinite(usageMeta.candidatesTokenCount)
+        ? usageMeta.candidatesTokenCount
+        : 0;
     const thoughtsTokens =
-      typeof usageMeta.thoughtsTokenCount === "number" ? usageMeta.thoughtsTokenCount : 0;
+      typeof usageMeta.thoughtsTokenCount === "number" &&
+      Number.isFinite(usageMeta.thoughtsTokenCount)
+        ? usageMeta.thoughtsTokenCount
+        : 0;
     const cachedTokens =
-      typeof usageMeta.cachedContentTokenCount === "number" ? usageMeta.cachedContentTokenCount : 0;
+      typeof usageMeta.cachedContentTokenCount === "number" &&
+      Number.isFinite(usageMeta.cachedContentTokenCount)
+        ? usageMeta.cachedContentTokenCount
+        : 0;
+
+    const uncachedInputTokens = Math.max(0, inputTokens - cachedTokens);
 
     state.usage = {
-      input_tokens: inputTokens,
-      output_tokens: candidatesTokens + thoughtsTokens,
+      input_tokens: uncachedInputTokens,
+      output_tokens: Math.max(0, candidatesTokens + thoughtsTokens),
     };
     if (cachedTokens > 0) {
       state.usage.cache_read_input_tokens = cachedTokens;
+      state.usage.cache_creation_input_tokens = 0;
     }
   }
 

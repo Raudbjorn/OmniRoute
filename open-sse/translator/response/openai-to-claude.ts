@@ -1,7 +1,31 @@
 import { register } from "../registry.ts";
 import { FORMATS } from "../formats.ts";
 import { CLAUDE_OAUTH_TOOL_PREFIX } from "../request/openai-to-claude.ts";
-import { hasToolCallShim, applyToolCallShimToBuffer } from "../helpers/toolCallShim.ts";
+import { hasToolCallShim, applyToolCallSanitizers } from "../helpers/toolCallShim.ts";
+
+/** Look up the client-declared input_schema/parameters for a (restored) tool name. */
+function lookupToolSchema(
+  state: { toolSchemas?: unknown },
+  name: string | undefined | null
+): Record<string, unknown> | null {
+  const map = state?.toolSchemas;
+  if (!(map instanceof Map) || typeof name !== "string" || !name) return null;
+  const schema = map.get(name);
+  return schema && typeof schema === "object" ? (schema as Record<string, unknown>) : null;
+}
+
+/**
+ * Whether this tool's arguments must be buffered and sanitized at close.
+ * Covers the named shims AND any tool with a declared input_schema — models
+ * that emit wrong field names, wrong types, or extra keys would otherwise hit
+ * a client-side InputValidationError retry loop.
+ */
+function needsArgSanitizer(
+  state: { toolSchemas?: unknown },
+  name: string | undefined | null
+): boolean {
+  return hasToolCallShim(name) || Boolean(lookupToolSchema(state, name));
+}
 import { appendToolCallArgumentDelta } from "../../utils/toolCallArguments.ts";
 import { isAbortFinishReason } from "../../utils/finishReason.ts";
 import {
@@ -47,10 +71,22 @@ function extractXmlInvokeBlocks(
     const toolCallTextMatch = remaining.match(/TOOL_CALL\s+([A-Za-z0-9_]+):\s*/);
 
     const matches = [
-      invokeMatch ? { type: "invoke" as const, index: invokeMatch.index!, data: invokeMatch } : null,
-      toolCallTagMatch ? { type: "tool_call_tag" as const, index: toolCallTagMatch.index!, data: toolCallTagMatch } : null,
-      toolCallTextMatch ? { type: "tool_call_text" as const, index: toolCallTextMatch.index!, data: toolCallTextMatch } : null,
-    ].filter(Boolean).sort((a, b) => a!.index - b!.index);
+      invokeMatch
+        ? { type: "invoke" as const, index: invokeMatch.index!, data: invokeMatch }
+        : null,
+      toolCallTagMatch
+        ? { type: "tool_call_tag" as const, index: toolCallTagMatch.index!, data: toolCallTagMatch }
+        : null,
+      toolCallTextMatch
+        ? {
+            type: "tool_call_text" as const,
+            index: toolCallTextMatch.index!,
+            data: toolCallTextMatch,
+          }
+        : null,
+    ]
+      .filter(Boolean)
+      .sort((a, b) => a!.index - b!.index);
 
     if (matches.length === 0) {
       cleaned += remaining;
@@ -95,9 +131,7 @@ function extractXmlInvokeBlocks(
         const name = (parsed.name || parsed.tool_name || "") as string;
         const rawArgs = parsed.arguments || parsed.args || parsed.parameters || {};
         const args: Record<string, string> =
-          typeof rawArgs === "string"
-            ? JSON.parse(rawArgs)
-            : (rawArgs as Record<string, string>);
+          typeof rawArgs === "string" ? JSON.parse(rawArgs) : (rawArgs as Record<string, string>);
         if (name) {
           toolCalls.push({ id: `toolu_txt_${Date.now()}_${toolCalls.length}`, name, args });
         }
@@ -115,12 +149,27 @@ function extractXmlInvokeBlocks(
       let jsonEndIndex = -1;
       for (let i = 0; i < afterPrefix.length; i++) {
         const c = afterPrefix[i];
-        if (escape) { escape = false; continue; }
-        if (c === "\\" && inString) { escape = true; continue; }
-        if (c === '"') { inString = !inString; continue; }
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (c === "\\" && inString) {
+          escape = true;
+          continue;
+        }
+        if (c === '"') {
+          inString = !inString;
+          continue;
+        }
         if (!inString) {
           if (c === "{") depth++;
-          else if (c === "}") { depth--; if (depth === 0) { jsonEndIndex = i + 1; break; } }
+          else if (c === "}") {
+            depth--;
+            if (depth === 0) {
+              jsonEndIndex = i + 1;
+              break;
+            }
+          }
         }
       }
       if (jsonEndIndex === -1) {
@@ -282,6 +331,9 @@ export function openaiToClaudeResponse(chunk, state) {
     state._markdownFenceOpening = false;
     state._markdownFenceClosingRun = 0;
     state._markdownLineIndent = 0;
+    if (!state.toolCalls) state.toolCalls = new Map();
+    state._accumulatedThinking = "";
+    state._hasContentEmitted = false;
     results.push({
       type: "message_start",
       message: {
@@ -327,6 +379,8 @@ export function openaiToClaudeResponse(chunk, state) {
       });
     }
 
+    state._accumulatedThinking = (state._accumulatedThinking || "") + reasoningContent;
+
     results.push({
       type: "content_block_delta",
       index: state.thinkingBlockIndex,
@@ -341,6 +395,7 @@ export function openaiToClaudeResponse(chunk, state) {
   if (delta?.content) {
     const strippedContent = stripInternalReasoningPlaceholder(delta.content);
     if (strippedContent) {
+      state._hasContentEmitted = true;
       stopThinkingBlock(state, results);
 
       // Rehydrate any Markdown boundary suffix buffered from the previous chunk
@@ -378,7 +433,7 @@ export function openaiToClaudeResponse(chunk, state) {
         state._markdownFenceRun || 0,
         state._markdownFenceOpening === true,
         state._markdownFenceClosingRun || 0,
-        state._markdownLineIndent || 0,
+        state._markdownLineIndent || 0
       );
       state._markdownBuffer = textToHold;
       state._markdownCodeSpanRun = backtickRun || 0;
@@ -435,9 +490,10 @@ export function openaiToClaudeResponse(chunk, state) {
           id: sanitizedId,
           name: incomingName,
           blockIndex: state.nextBlockIndex++,
-          // Shimmed tools buffer their raw args and emit a single corrected
+          // Tools needing arg sanitization (named shim or declared schema)
+          // buffer their raw args and emit a single corrected
           // input_json_delta at content_block_stop time (see finish handler).
-          shimmed: incomingName ? hasToolCallShim(incomingName) : false,
+          shimmed: incomingName ? needsArgSanitizer(state, incomingName) : false,
           argBuffer: "",
           startEmitted: false,
         });
@@ -449,13 +505,14 @@ export function openaiToClaudeResponse(chunk, state) {
         if (tc.id && !toolInfo.id) toolInfo.id = sanitizeToolId(tc.id);
         if (incomingName && !toolInfo.startEmitted && !toolInfo.name) {
           toolInfo.name = incomingName;
-          toolInfo.shimmed = hasToolCallShim(incomingName);
+          toolInfo.shimmed = needsArgSanitizer(state, incomingName);
         }
-
-        // Emit content_block_start once we have a name. If arguments arrive before
-        // any name was ever seen, start the block anyway with the (empty) name so
-        // the input_json_delta stays well-formed.
-        if (!toolInfo.startEmitted && (toolInfo.name || tc.function?.arguments != null)) {
+        // Emit content_block_start only once we have a name. Buffer arguments
+        // silently until the name arrives so we never emit a tool_use with an
+        // empty `name` field — Anthropic rejects empty tool names, and the test
+        // suite at tests/unit/openai-to-claude-glm-split-tool-name-2077.test.ts
+        // asserts no tool_use event is emitted before the name lands.
+        if (!toolInfo.startEmitted && toolInfo.name) {
           toolInfo.startEmitted = true;
           results.push({
             type: "content_block_start",
@@ -463,17 +520,29 @@ export function openaiToClaudeResponse(chunk, state) {
             content_block: {
               type: "tool_use",
               id: toolInfo.id,
-              name: toolInfo.name || "",
+              name: toolInfo.name,
               input: {},
             },
           });
+          // Replay the full argument buffer now that the block is open.
+          // Without this replay the late-arriving name would surface a tool_use
+          // block with no input_json_delta history, and downstream code that
+          // diffed the argument stream would observe an empty input (#2077).
+          if (toolInfo.argBuffer) {
+            results.push({
+              type: "content_block_delta",
+              index: toolInfo.blockIndex,
+              delta: { type: "input_json_delta", partial_json: toolInfo.argBuffer },
+            });
+          }
         }
       }
 
       if (tc.function?.arguments) {
         if (toolInfo) {
           // Always buffer the raw stream so shimmed tools can re-emit a
-          // corrected JSON at stop time.
+          // corrected JSON at stop time AND so a late-arriving name can replay
+          // the accumulated arguments after content_block_start (#2077).
           const existingArgs = toolInfo.argBuffer || "";
           const nextArgs = appendToolCallArgumentDelta(existingArgs, tc.function.arguments);
           let deltaStr = nextArgs.slice(existingArgs.length);
@@ -484,17 +553,11 @@ export function openaiToClaudeResponse(chunk, state) {
             continue;
           }
 
-          // NOTE: The regex-based "Fix #1852" strip that previously ran here was
-          // removed in #4951. That strip matched patterns like `"key":""` and
-          // `"key":[]` to remove spurious placeholder fields that some models emit
-          // as noise. However, since #3762 the snapshot-dedup logic in
-          // appendToolCallArgumentDelta already collapses repeated/growing snapshots
-          // into a single delta, so noise-only chunks are naturally suppressed.
-          // More critically, the regex unconditionally deleted any field whose value
-          // happened to be "" or [], silently corrupting intentional empty-string or
-          // empty-array arguments (e.g. {"file_path":"","content":"text"} →
-          // {"content":"text"}). Emit deltaStr as-is; the Claude client parses the
-          // assembled partial_json fragments and tolerates unknown extra fields.
+          // Suppress passthrough while content_block_start is still pending.
+          // Replayed in one shot after the start event lands (#2077 / GLM).
+          if (!toolInfo.startEmitted) {
+            continue;
+          }
 
           results.push({
             type: "content_block_delta",
@@ -523,7 +586,65 @@ export function openaiToClaudeResponse(chunk, state) {
     stopThinkingBlock(state, results);
     stopTextBlock(state, results);
 
+    // If any tool call's accumulated arguments are not valid JSON, the upstream
+    // stream was truncated mid-call (observed: Devin Connect streams ending
+    // during argument deltas — client then logged InputValidationError and the
+    // model retried with hallucinated stub args like {"command":…,"len":N}).
+    // Closing the block normally would hand the client unparseable
+    // partial_json that may validate-fail or, worse, execute a truncated
+    // command. Emit a terminal error instead so the turn is retried.
+    // Applies to every tool — sanitized tools would otherwise be "repaired"
+    // into a wrong {}-ish call.
+    let truncatedArgs = false;
     for (const [, toolInfo] of state.toolCalls) {
+      if (!toolInfo.argBuffer) continue;
+      try {
+        JSON.parse(toolInfo.argBuffer);
+      } catch {
+        truncatedArgs = true;
+        break;
+      }
+    }
+    if (truncatedArgs) {
+      results.push({
+        type: "error",
+        error: {
+          type: "api_error",
+          message:
+            "Upstream stream truncated tool-call arguments — the response was cut mid-call; retry the turn",
+        },
+      });
+      return results;
+    }
+
+    for (const [, toolInfo] of state.toolCalls) {
+      // A tool call that streamed an id+arguments but never a name is malformed.
+      // Anthropic rejects empty tool names, and emitting content_block_start
+      // here would surface that invalid block to the client. Throw so the
+      // upstream call surfaces the protocol error rather than passing through
+      // an invalid tool_use (#2077 + GLM edge case).
+      if (!toolInfo.name) {
+        throw new Error(
+          "Upstream protocol error: streamed tool call without a name — Anthropic rejects empty tool names; the upstream stream must include function.name before finish_reason"
+        );
+      }
+
+      // For sanitized tools (named shim or declared schema), emit one
+      // corrective input_json_delta with the fully patched JSON before
+      // closing the block.
+      if (toolInfo.shimmed) {
+        const patched = applyToolCallSanitizers(
+          toolInfo.name,
+          toolInfo.argBuffer || "",
+          lookupToolSchema(state, toolInfo.name)
+        );
+        results.push({
+          type: "content_block_delta",
+          index: toolInfo.blockIndex,
+          delta: { type: "input_json_delta", partial_json: patched },
+        });
+      }
+
       // A tool call whose name/args never arrived (only an id chunk was seen)
       // still has a reserved block index but no content_block_start. Emit it now
       // so the terminal content_block_stop is not orphaned (#2077 edge case).
@@ -541,23 +662,11 @@ export function openaiToClaudeResponse(chunk, state) {
         });
       }
 
-      // For shimmed tools, emit one corrective input_json_delta with the
-      // fully patched JSON before closing the block.
-      if (toolInfo.shimmed) {
-        const patched = applyToolCallShimToBuffer(toolInfo.name, toolInfo.argBuffer || "");
-        results.push({
-          type: "content_block_delta",
-          index: toolInfo.blockIndex,
-          delta: { type: "input_json_delta", partial_json: patched },
-        });
-      }
-
       results.push({
         type: "content_block_stop",
         index: toolInfo.blockIndex,
       });
     }
-
     // Emit any XML-extracted tool calls (from models like Dracarys that
     // emit <invoke> blocks in content instead of JSON tool_calls in delta)
     const xmlToolCalls = state._pendingXmlToolCalls || [];
@@ -580,6 +689,35 @@ export function openaiToClaudeResponse(chunk, state) {
         type: "content_block_stop",
         index: blockIndex,
       });
+    }
+
+    // If the model produced ONLY reasoning/thinking and zero text/content blocks and zero tool calls
+    // (e.g. SWE 1.7 or deepseek models on pure reasoning / summarization / compaction turns), synthesize a
+    // text content block with the reasoning text so Claude Code CLI and Claude clients do not fail
+    // with "empty response" / "automatic compaction failed".
+    const hasToolCalls = (state.toolCalls && state.toolCalls.size > 0) || xmlToolCalls.length > 0;
+    if (
+      !state._hasContentEmitted &&
+      !hasToolCalls &&
+      typeof state._accumulatedThinking === "string" &&
+      state._accumulatedThinking.trim().length > 0
+    ) {
+      const fallbackIndex = state.nextBlockIndex++;
+      results.push({
+        type: "content_block_start",
+        index: fallbackIndex,
+        content_block: { type: "text", text: "" },
+      });
+      results.push({
+        type: "content_block_delta",
+        index: fallbackIndex,
+        delta: { type: "text_delta", text: state._accumulatedThinking },
+      });
+      results.push({
+        type: "content_block_stop",
+        index: fallbackIndex,
+      });
+      state._hasContentEmitted = true;
     }
 
     // Override finish_reason to tool_use if XML tool calls were found

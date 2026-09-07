@@ -6,6 +6,7 @@ import {
   CLAUDE_FABLE_5_1_PRICING,
   CLAUDE_OPUS_5_PRICING,
   GEMINI_3_7_FLASH_PROMO_PRICING,
+  GEMINI_3_8_FLASH_PROMO_PRICING,
   GPT_5_3_CODEX_PRICING,
   GPT_5_5_PRICING,
   GPT_5_6_LUNA_PRICING,
@@ -17,6 +18,14 @@ const ANTIGRAVITY_GEMINI_3_7_PRICING = {
   "gemini-3.7-flash-low": GEMINI_3_7_FLASH_PROMO_PRICING,
   "gemini-3.7-flash-medium": GEMINI_3_7_FLASH_PROMO_PRICING,
   "gemini-3.7-flash-high": GEMINI_3_7_FLASH_PROMO_PRICING,
+};
+
+const ANTIGRAVITY_GEMINI_3_8_PRICING = {
+  "gemini-3.8-flash": GEMINI_3_8_FLASH_PROMO_PRICING,
+  "gemini-3.8-flash-tiered": GEMINI_3_8_FLASH_PROMO_PRICING,
+  "gemini-3.8-flash-low": GEMINI_3_8_FLASH_PROMO_PRICING,
+  "gemini-3.8-flash-medium": GEMINI_3_8_FLASH_PROMO_PRICING,
+  "gemini-3.8-flash-high": GEMINI_3_8_FLASH_PROMO_PRICING,
 };
 
 export const DEFAULT_PRICING_OAUTH = {
@@ -316,8 +325,14 @@ export const DEFAULT_PRICING_OAUTH = {
       cache_creation: 0.5,
     },
   },
-  antigravity: ANTIGRAVITY_GEMINI_3_7_PRICING,
-  agy: ANTIGRAVITY_GEMINI_3_7_PRICING,
+  antigravity: {
+    ...ANTIGRAVITY_GEMINI_3_7_PRICING,
+    ...ANTIGRAVITY_GEMINI_3_8_PRICING,
+  },
+  agy: {
+    ...ANTIGRAVITY_GEMINI_3_7_PRICING,
+    ...ANTIGRAVITY_GEMINI_3_8_PRICING,
+  },
   gh: {
     "claude-opus-5": CLAUDE_OPUS_5_PRICING,
     "gpt-5": {
@@ -391,6 +406,7 @@ export const DEFAULT_PRICING_OAUTH = {
       cache_creation: 0.5,
     },
     "gemini-3.7-flash": GEMINI_3_7_FLASH_PROMO_PRICING,
+    ...ANTIGRAVITY_GEMINI_3_8_PRICING,
     "gemini-2.5-pro": {
       input: 2.0,
       output: 12.0,
@@ -477,5 +493,41 @@ export const DEFAULT_PRICING_OAUTH = {
     "gpt-5.6-sol": GPT_5_6_SOL_PRICING,
     "gpt-5.6-terra": GPT_5_6_TERRA_PRICING,
     "gpt-5.6-luna": GPT_5_6_LUNA_PRICING,
+  },
+
+  // ── Devin Desktop (Cognition SWE-1.x models, Codeium OAuth backend) ──────
+  // Pricing from the Windsurf IDE model picker (verified 2026-09-01).
+  // SWE-1.7 Lightning: $2.5 Input / $1 Cached / $12.5 Output per 1M tokens.
+  // SWE-1.7 (non-Lightning): half of Lightning price ($1.25 / $0.5 / $6.25).
+  "devin-desktop": {
+    "swe-1-7-lightning": {
+      input: 2.5,
+      output: 12.5,
+      cached: 1.0,
+    },
+    "swe-1-7": {
+      input: 1.25,
+      output: 6.25,
+      cached: 0.5,
+    },
+    // SWE-1.6 is older, priced at SWE-1.7 non-lightning rate
+    "swe-1-6-fast": { input: 1.25, output: 6.25, cached: 0.5 },
+    "swe-1-6": { input: 1.25, output: 6.25, cached: 0.5 },
+  },
+
+  // ── Windsurf (same Codeium SWE catalog, different OAuth surface) ──────────
+  windsurf: {
+    "swe-1-7-lightning": {
+      input: 2.5,
+      output: 12.5,
+      cached: 1.0,
+    },
+    "swe-1-7": {
+      input: 1.25,
+      output: 6.25,
+      cached: 0.5,
+    },
+    "swe-1-6-fast": { input: 1.25, output: 6.25, cached: 0.5 },
+    "swe-1-6": { input: 1.25, output: 6.25, cached: 0.5 },
   },
 };
