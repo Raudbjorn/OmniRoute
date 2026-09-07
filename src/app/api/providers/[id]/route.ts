@@ -194,7 +194,7 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
               error:
                 error instanceof Error
                   ? error.message
-                  : "Die ChatGPT-Browserprüfung konnte nicht abgeschlossen werden.",
+                  : "ChatGPT browser verification could not be completed.",
             },
             { status: 400 }
           );
