@@ -56,6 +56,7 @@ export interface RetrievePreviewBundle {
 }
 
 export { estimateTokens, sanitizeFts5Query } from "./retrieval/scoring";
+export { toFts5MatchQuery } from "./ftsQuery";
 
 function hasTable(tableName: string): boolean {
   const db = getDbInstance();

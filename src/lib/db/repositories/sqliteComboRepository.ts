@@ -92,7 +92,13 @@ function normalizeStoredCombo(
 function parseComboRow(row: unknown): JsonRecord | null {
   const payload = getSerializedData(row);
   if (!payload) return null;
-  const parsed = withRowId(payload, asRecord(row));
+  let parsed: JsonRecord;
+  try {
+    parsed = withRowId(payload, asRecord(row));
+  } catch {
+    // Malformed JSON in combos.data must not crash the WebUI (#0be4243d2).
+    return null;
+  }
   // Merge deduplicated column values back into the record
   const record = asRecord(row);
   if (record.context_cache_protection !== undefined && record.context_cache_protection !== null) {
