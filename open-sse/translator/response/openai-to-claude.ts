@@ -507,11 +507,13 @@ export function openaiToClaudeResponse(chunk, state) {
           toolInfo.name = incomingName;
           toolInfo.shimmed = needsArgSanitizer(state, incomingName);
         }
+        // Emit content_block_start only once we have a name. Buffer arguments
+        // silently until the name arrives so we never emit a tool_use with an
+        // empty `name` field — Anthropic rejects empty tool names, and the test
+        // suite at tests/unit/openai-to-claude-glm-split-tool-name-2077.test.ts
+        // asserts no tool_use event is emitted before the name lands.
 
-        // Emit content_block_start once we have a name. If arguments arrive before
-        // any name was ever seen, start the block anyway with the (empty) name so
-        // the input_json_delta stays well-formed.
-        if (!toolInfo.startEmitted && (toolInfo.name || tc.function?.arguments != null)) {
+        if (!toolInfo.startEmitted && toolInfo.name) {
           toolInfo.startEmitted = true;
           results.push({
             type: "content_block_start",
@@ -611,21 +613,15 @@ export function openaiToClaudeResponse(chunk, state) {
     }
 
     for (const [, toolInfo] of state.toolCalls) {
-      // A tool call whose name/args never arrived (only an id chunk was seen)
-      // still has a reserved block index but no content_block_start. Emit it now
-      // so the terminal content_block_stop is not orphaned (#2077 edge case).
-      if (!toolInfo.startEmitted) {
-        toolInfo.startEmitted = true;
-        results.push({
-          type: "content_block_start",
-          index: toolInfo.blockIndex,
-          content_block: {
-            type: "tool_use",
-            id: toolInfo.id,
-            name: toolInfo.name || "",
-            input: {},
-          },
-        });
+      // A tool call that streamed an id+arguments but never a name is malformed.
+      // Anthropic rejects empty tool names, and emitting content_block_start
+      // here would surface that invalid block to the client. Throw so the
+      // upstream call surfaces the protocol error rather than passing through
+      // an invalid tool_use (#2077 + GLM edge case).
+      if (!toolInfo.name) {
+        throw new Error(
+          "Upstream protocol error: streamed tool call without a name — Anthropic rejects empty tool names; the upstream stream must include function.name before finish_reason"
+        );
       }
 
       // For sanitized tools (named shim or declared schema), emit one
@@ -644,12 +640,28 @@ export function openaiToClaudeResponse(chunk, state) {
         });
       }
 
+      // A tool call whose name/args never arrived (only an id chunk was seen)
+      // still has a reserved block index but no content_block_start. Emit it now
+      // so the terminal content_block_stop is not orphaned (#2077 edge case).
+      if (!toolInfo.startEmitted) {
+        toolInfo.startEmitted = true;
+        results.push({
+          type: "content_block_start",
+          index: toolInfo.blockIndex,
+          content_block: {
+            type: "tool_use",
+            id: toolInfo.id,
+            name: toolInfo.name || "",
+            input: {},
+          },
+        });
+      }
+
       results.push({
         type: "content_block_stop",
         index: toolInfo.blockIndex,
       });
     }
-
     // Emit any XML-extracted tool calls (from models like Dracarys that
     // emit <invoke> blocks in content instead of JSON tool_calls in delta)
     const xmlToolCalls = state._pendingXmlToolCalls || [];

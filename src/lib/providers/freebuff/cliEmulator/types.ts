@@ -368,7 +368,8 @@ export interface FreebuffHttpResponse {
   readonly statusText: string;
   readonly headers: Record<string, string>;
   readonly body: ReadableStream<Uint8Array>;
-  /** Read the body as text (consumes the stream). */
+  /** Whether the response has a 2xx status code (mirrors the standard fetch Response.ok). */
+  readonly ok: boolean;
   text(): Promise<string>;
   /** Read the body as JSON (consumes the stream). */
   json<T = unknown>(): Promise<T>;

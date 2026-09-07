@@ -663,6 +663,23 @@ export function prepareClaudeRequest(
       body.tools = body.tools.filter((tool) => tool.name && tool.name?.trim());
     }
 
+    // Pass 1.5-prep: re-filter messages whose content went empty AFTER the
+    // Pass 1.4 nameless-tool-use drop. The Pass 1 empty-message filter ran
+    // before that drop, so non-final assistant messages whose ONLY content was
+    // a nameless tool_use now have `content: []` — Anthropic rejects the empty
+    // content array. Drop them while preserving the original final assistant
+    // even if its content is empty.
+    const originalLen = body.messages.length;
+    filtered = filtered.filter((msg, idx) => {
+      const isOriginalFinalAssistant =
+        idx === filtered.length - 1 &&
+        msg.role === "assistant" &&
+        filtered.length === originalLen;
+      if (isOriginalFinalAssistant) return true;
+      if (!Array.isArray(msg.content)) return true;
+      return msg.content.length > 0;
+    });
+
     // Pass 1.45: Move stray tool_result blocks out of assistant messages
     // before any ordering fix runs (#2815).
     filtered = splitMisplacedToolResults(filtered);

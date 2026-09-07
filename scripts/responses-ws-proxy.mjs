@@ -245,6 +245,7 @@ class ResponsesWsSession {
     this.fragmentParts = [];
     this.upstream = null;
     this.upstreamReady = null;
+    this.dispatchQueue = Promise.resolve();
     this.lastSeenAt = Date.now();
 
     this.pingTimer = setInterval(() => {
@@ -432,24 +433,34 @@ class ResponsesWsSession {
   }
 
   async forwardClientMessage(message) {
-    try {
-      if (!this.upstream) {
-        const { upstream, firstMessage } = await this.ensureUpstream(message);
-        upstream.send(jsonStringifySafe(firstMessage));
-        return;
+    // Serialize concurrent message handling: while ensureUpstream() is awaiting,
+    // a second client message that arrives in the same window must NOT skip
+    // past this await — it would otherwise send its own message without ever
+    // forwarding the first prepared response.create, and the bridge would
+    // ship the prepare response payload twice while dropping the late message.
+    // Chain onto this.dispatchQueue so each frame is processed in arrival order.
+    const next = this.dispatchQueue.then(async () => {
+      try {
+        if (this.closed) return;
+        if (!this.upstream) {
+          const { upstream, firstMessage } = await this.ensureUpstream(message);
+          upstream.send(jsonStringifySafe(firstMessage));
+          return;
+        }
+        this.upstream.send(jsonStringifySafe(message));
+      } catch (error) {
+        const code = error?.code || "upstream_websocket_connect_failed";
+        const messageText = error instanceof Error ? error.message : String(error);
+        this.sendFailure(code, messageText);
+        this.close(1011, "upstream_connect_failed");
       }
-      this.upstream.send(jsonStringifySafe(message));
-    } catch (error) {
-      const code = error?.code || "upstream_websocket_connect_failed";
-      const messageText = error instanceof Error ? error.message : String(error);
-      this.sendFailure(code, messageText);
-      this.close(1011, "upstream_connect_failed");
-    }
+    });
+    this.dispatchQueue = next.catch(() => {});
+    await next;
   }
 
   close(code = 1000, reason = "normal_closure") {
     if (this.closed) return;
-    this.closed = true;
 
     clearInterval(this.pingTimer);
     try {
@@ -462,7 +473,10 @@ class ResponsesWsSession {
     const payload = Buffer.allocUnsafe(2 + reasonBuffer.length);
     payload.writeUInt16BE(code, 0);
     reasonBuffer.copy(payload, 2);
+    // sendFrame guards on this.closed; write the close frame BEFORE flipping
+    // the flag so the guard does not turn the close handshake into a no-op.
     this.sendFrame(0x8, payload);
+    this.closed = true;
     this.socket.end();
     setTimeout(() => {
       if (!this.socket.destroyed) {

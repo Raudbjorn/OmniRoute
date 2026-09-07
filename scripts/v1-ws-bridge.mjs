@@ -258,6 +258,7 @@ class WebSocketSession {
           "frame_decode_failed",
           error instanceof Error ? error.message : String(error)
         );
+        this.close(1002, "frame_decode_failed");
       });
     });
     this.socket.on("close", () => this.dispose());
@@ -531,7 +532,6 @@ class WebSocketSession {
 
   close(code = 1000, reason = "normal_closure") {
     if (this.closed) return;
-    this.closed = true;
 
     clearInterval(this.pingTimer);
     for (const active of this.activeRequests.values()) {
@@ -543,7 +543,10 @@ class WebSocketSession {
     const payload = Buffer.allocUnsafe(2 + reasonBuffer.length);
     payload.writeUInt16BE(code, 0);
     reasonBuffer.copy(payload, 2);
+    // sendFrame guards on this.closed; write the close frame BEFORE flipping
+    // the flag so the guard does not turn the close handshake into a no-op.
     this.sendFrame(0x8, payload);
+    this.closed = true;
     this.socket.end();
     setTimeout(() => {
       if (!this.socket.destroyed) {

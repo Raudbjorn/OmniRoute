@@ -84,7 +84,7 @@ export const freebuffPollResponseSchema = z.object({
    * The OAuthModal uses this to recommend the paste-credentials.json path
    * instead of asking the user to retry the browser PKCE flow.
    */
-  errorCode: z.enum(["fingerprint_mismatch", "generic"]).optional(),
+  errorCode: z.enum(["fingerprint_mismatch", "generic", "network_error"]).optional(),
   message: z.string().optional(),
 });
 export type FreebuffPollResponse = z.infer<typeof freebuffPollResponseSchema>;
@@ -132,6 +132,7 @@ export interface FreebuffPollOptions {
   fetchImpl?: typeof fetch;
   now?: () => number;
   sleepFn?: (ms: number) => Promise<void>;
+  onProgress?: (attempt: number, delayMs: number) => void;
 }
 
 /** Wire shape returned by the upstream /api/auth/cli/code endpoint. */

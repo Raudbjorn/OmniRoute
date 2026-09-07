@@ -114,6 +114,7 @@ async function tlsClientFetch(
   return {
     status: response.status,
     statusText: response.statusText ?? "",
+    ok: response.status >= 200 && response.status < 300,
     headers: Object.fromEntries(
       Object.entries(response.headers ?? {}).map(([k, v]) => [
         k,
@@ -153,6 +154,7 @@ async function wreqFetch(
   return {
     status: response.status,
     statusText: response.statusText ?? "",
+    ok: response.status >= 200 && response.status < 300,
     headers: Object.fromEntries(
       Object.entries(response.headers ?? {}).map(([k, v]) => [
         k,
@@ -187,6 +189,7 @@ async function globalFetch(req: FreebuffHttpRequest): Promise<FreebuffHttpRespon
   return {
     status: response.status,
     statusText: response.statusText,
+    ok: response.ok,
     headers: Object.fromEntries(response.headers.entries()),
     body: response.body!,
     async text() {
