@@ -10,7 +10,15 @@ import { recordMemoryAccess } from "./store";
 import { stats as embeddingCacheStats } from "./embedding/cache";
 import { getQdrantConfig, checkQdrantHealth, searchSemanticMemory } from "./qdrant";
 import type { MemoryEngineStatus } from "@/shared/schemas/memory";
-import { estimateTokens, parseMetadata, rowToMemory, getRelevanceScore } from "./retrieval/scoring";
+import { supportsFts5 } from "../db/migrationRunner";
+import type { SqliteAdapter } from "../db/adapters/types";
+import {
+  estimateTokens,
+  parseMetadata,
+  rowToMemory,
+  getRelevanceScore,
+  sanitizeFts5Query,
+} from "./retrieval/scoring";
 import type { MemoryRow } from "./retrieval/scoring";
 
 const log = logger("MEMORY_RETRIEVAL");
@@ -47,9 +55,7 @@ export interface RetrievePreviewBundle {
   budgetMaxTokens: number;
 }
 
-export { estimateTokens } from "./retrieval/scoring";
-
-// ──────────────── Helpers ────────────────
+export { estimateTokens, sanitizeFts5Query } from "./retrieval/scoring";
 
 function hasTable(tableName: string): boolean {
   const db = getDbInstance();
@@ -78,16 +84,8 @@ function fetchMemoriesByIds(ids: string[]): Memory[] {
   return ids.map((id) => byId.get(id)).filter((m): m is Memory => m !== undefined);
 }
 
-/**
- * Sanitize a free-text query into an FTS5 MATCH expression.
- * Strips FTS5 syntax characters (?, !, ", *, :, parentheses, etc.) and quotes
- * each whitespace-separated term so natural-language queries with punctuation
- * don't raise "fts5: syntax error".
- */
-import { toFts5MatchQuery } from "./ftsQuery";
-export { toFts5MatchQuery } from "./ftsQuery";
-
-interface FtsColConfig {  apiKeyCol: string;
+interface FtsColConfig {
+  apiKeyCol: string;
   expiresCol: string;
   createdCol: string;
   sessionCol: string;
@@ -104,6 +102,8 @@ interface FtsColConfig {  apiKeyCol: string;
  */
 function buildFtsRows(apiKeyId: string, config: FtsColConfig): MemoryRow[] {
   if (!config.query) return [];
+  const safeQuery = sanitizeFts5Query(config.query);
+  if (!safeQuery) return [];
   const db = getDbInstance();
   const {
     apiKeyCol,
@@ -111,7 +111,6 @@ function buildFtsRows(apiKeyId: string, config: FtsColConfig): MemoryRow[] {
     createdCol,
     sessionCol,
     tableName,
-    query: q,
     scope,
     sessionId,
     retentionDays,
@@ -130,7 +129,7 @@ function buildFtsRows(apiKeyId: string, config: FtsColConfig): MemoryRow[] {
   }
   ftsQueryStr += ` ORDER BY f.rank LIMIT 100`;
 
-  const ftsParams: unknown[] = [toFts5MatchQuery(q), apiKeyId];
+  const ftsParams: unknown[] = [safeQuery, apiKeyId];
   if (scope === "session" && sessionId) ftsParams.push(sessionId);
   if (retentionDays && retentionDays > 0) {
     const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString();
@@ -923,16 +922,17 @@ export async function retrievePreview(
     // Semantic/hybrid degraded to FTS5
     let ftsRows: MemoryRow[] = [];
     if (query && ftsAvailable) {
-      const ftsQueryStr = apiKeyId
-        ? `SELECT m.* FROM ${tableName} m JOIN memory_fts f ON m.memory_id = f.rowid WHERE f.memory_fts MATCH ? AND m.${apiKeyCol} = ? ORDER BY f.rank LIMIT ?`
-        : `SELECT m.* FROM ${tableName} m JOIN memory_fts f ON m.memory_id = f.rowid WHERE f.memory_fts MATCH ? ORDER BY f.rank LIMIT ?`;
-      const ftsP: unknown[] = apiKeyId
-        ? [toFts5MatchQuery(query), apiKeyId, limit]
-        : [toFts5MatchQuery(query), limit];
-      try {
-        ftsRows = db.prepare(ftsQueryStr).all(...ftsP) as MemoryRow[];
-      } catch {
-        ftsRows = [];
+      const safeQuery = sanitizeFts5Query(query);
+      if (safeQuery) {
+        const ftsQueryStr = apiKeyId
+          ? `SELECT m.* FROM ${tableName} m JOIN memory_fts f ON m.memory_id = f.rowid WHERE f.memory_fts MATCH ? AND m.${apiKeyCol} = ? ORDER BY f.rank LIMIT ?`
+          : `SELECT m.* FROM ${tableName} m JOIN memory_fts f ON m.memory_id = f.rowid WHERE f.memory_fts MATCH ? ORDER BY f.rank LIMIT ?`;
+        const ftsP: unknown[] = apiKeyId ? [safeQuery, apiKeyId, limit] : [safeQuery, limit];
+        try {
+          ftsRows = db.prepare(ftsQueryStr).all(...ftsP) as MemoryRow[];
+        } catch {
+          ftsRows = [];
+        }
       }
     }
 
@@ -966,6 +966,34 @@ export async function retrievePreview(
     totalTokens,
     budgetMaxTokens: maxTokens,
   };
+}
+
+// ──────────────── keyword engine status (§3.2) ────────────────
+
+export interface KeywordEngineStatus {
+  available: boolean;
+  backend: "FTS5" | "none";
+  reason: string;
+}
+
+/**
+ * Probe the runtime SQLite build for FTS5 support and report the TRUTH of the
+ * keyword tier — never a hardcoded claim. `supportsFts5()` reuses the module
+ * probe already run by migrationRunner (cached per-adapter WeakMap), so an
+ * FTS5-less build (e.g. sql.js/WASM, "no such module: fts5") surfaces here as
+ * `available:false` instead of the dashboard claiming FTS5 is always available.
+ * Any unexpected probe error degrades to unavailable rather than throwing.
+ */
+export function keywordEngineStatus(db: SqliteAdapter): KeywordEngineStatus {
+  let available = false;
+  let reason = "SQLite build lacks FTS5 — keyword search unavailable (fall back to exact scan)";
+  try {
+    available = supportsFts5(db);
+    if (available) reason = "FTS5 keyword search active";
+  } catch (err: unknown) {
+    reason = `FTS5 probe failed: ${sanitizeErrorMessage(err instanceof Error ? err.message : String(err))}`;
+  }
+  return { available, backend: available ? "FTS5" : "none", reason };
 }
 
 // ──────────────── engineStatus (§3.2) ────────────────
@@ -1049,7 +1077,7 @@ export async function engineStatus(): Promise<MemoryEngineStatus> {
       : (settings.rerankProviderModel ?? null);
 
   return {
-    keyword: { available: true, backend: "FTS5" },
+    keyword: keywordEngineStatus(getDbInstance()),
     embedding: {
       source: resolution.source,
       model: resolution.model,

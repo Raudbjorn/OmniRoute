@@ -10,31 +10,43 @@ permissions:
 jobs:
   heap:
     name: Heap-growth gate
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
       - run: npm ci
       - run: npm run test:heap
 
   chaos:
     name: Resilience chaos (fault injection)
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
       - run: npm ci
       - run: npm run test:chaos
 
   k6-soak:
     name: k6 load/soak
-    runs-on: ubuntu-26.04
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
       - run: npm ci
       - name: Build CLI bundle
         env:
@@ -66,7 +78,10 @@ jobs:
 
   a11y:
     name: A11y axe (nightly, freeze-and-alert)
-    runs-on: ubuntu-26.04
+    # #11965: this job runs a backend-only `next build`; the hosted 7 GB runner cannot build
+    # release/v3.8.51 (VM shutdown ~7 min in), so it targets the box's light pool (`omni-light`:
+    # two listeners, jobs ≤ ~6 GB). Falls back to hosted when USE_VPS_RUNNER is off.
+    runs-on: ${{ (vars.USE_VPS_RUNNER == 'true' && fromJSON('["self-hosted","omni-light"]')) || 'ubuntu-latest' }}
     # The Playwright webServer (`start` mode) builds Next via build-next-isolated.mjs and
     # boots the standalone server itself (waits on /api/monitoring/health, 15min webServer
     # timeout). Unlike the per-PR test-e2e job, this nightly job has no pre-built artifact,
@@ -80,9 +95,13 @@ jobs:
       DISABLE_SQLITE_AUTO_BACKUP: "true"
       REQUIRE_AXE: "1"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
       - run: npm ci
       - name: Cache Playwright browsers
         uses: actions/cache@v6.1.0

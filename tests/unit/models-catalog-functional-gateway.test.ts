@@ -1,6 +1,9 @@
 import { test, after } from "node:test";
 import assert from "node:assert/strict";
-import { applyCatalogPostFilters } from "../../src/app/api/v1/models/catalogResponse.ts";
+import {
+  applyCatalogPostFilters,
+  filterUnauthorizedFunctionalGatewayMirrors,
+} from "../../src/app/api/v1/models/catalogResponse.ts";
 import {
   removeFeatureFlagOverride,
   setFeatureFlagOverride,
@@ -21,11 +24,11 @@ function makeRequest(query = ""): Request {
   return new Request(`http://localhost/v1/models${query}`);
 }
 
-test("catalog post-filters do not add mirrors when gate off (default)", () => {
+test("catalog post-filters do not add mirrors when gate off (default)", async () => {
   const models = [
     { id: "deepseek/deepseek-v4-flash", owned_by: "deepseek", root: "deepseek-v4-flash" },
   ];
-  const out = applyCatalogPostFilters(makeRequest(), models, {
+  const out = await applyCatalogPostFilters(makeRequest(), models, {
     connections: [],
     prefixMode: "dual",
     aliasToProviderId: {},
@@ -33,14 +36,55 @@ test("catalog post-filters do not add mirrors when gate off (default)", () => {
   assert.deepEqual(out, models);
 });
 
-test("catalog post-filters synthesize a gateway mirror when gate on and gateway has a connection", () => {
+test("final catalog permission filtering does not let a mirror inherit base access", async () => {
+  setFeatureFlagOverride(FLAG_KEY, "true");
+  setFunctionalGatewayProviderSetting("agentrouter", "on");
+
+  const models = [{ id: "kmc/k3", owned_by: "kimi-coding", root: "k3" }];
+  const withMirror = await applyCatalogPostFilters(makeRequest(), models, {
+    connections: [
+      {
+        id: "conn-1",
+        provider: "agentrouter",
+        isActive: true,
+        providerSpecificData: {},
+      },
+    ],
+    prefixMode: "dual",
+    aliasToProviderId: {},
+  });
+  const allowed = await filterUnauthorizedFunctionalGatewayMirrors(
+    withMirror,
+    "restricted-key",
+    async (_key, modelId) => modelId === "kmc/k3"
+  );
+
+  assert.deepEqual(
+    allowed.map((model) => model.id),
+    ["kmc/k3"],
+    "a synthesized gateway mirror must authorize its own public ID"
+  );
+
+  const gatewayAllowed = await filterUnauthorizedFunctionalGatewayMirrors(
+    withMirror,
+    "gateway-key",
+    async (_key, modelId) => modelId === "agentrouter/kmc/k3"
+  );
+  assert.deepEqual(
+    gatewayAllowed.map((model) => model.id),
+    ["kmc/k3", "agentrouter/kmc/k3"],
+    "an independently authorized gateway mirror must remain visible"
+  );
+});
+
+test("catalog post-filters synthesize a gateway mirror when gate on and gateway has a connection", async () => {
   setFeatureFlagOverride(FLAG_KEY, "true");
   setFunctionalGatewayProviderSetting("agentrouter", "on");
 
   const models = [
     { id: "deepseek/deepseek-v4-flash", owned_by: "deepseek", root: "deepseek-v4-flash" },
   ];
-  const out = applyCatalogPostFilters(makeRequest(), models, {
+  const out = await applyCatalogPostFilters(makeRequest(), models, {
     connections: [
       {
         id: "conn-1",

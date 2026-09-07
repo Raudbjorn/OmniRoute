@@ -90,7 +90,7 @@ test("VertexExecutor.buildUrl routes partner and org-prefixed models to the glob
   );
 });
 
-test("VertexExecutor.buildUrl routes current-generation Claude models to the native Anthropic rawPredict endpoint (#1985)", () => {
+test("VertexExecutor.buildUrl routes current-generation Claude models to the native Anthropic rawPredict endpoint (#1985, #8994)", () => {
   const executor = new VertexExecutor();
 
   // These model IDs post-date the old pinned "claude-3-5-sonnet" / "claude-3-opus" /

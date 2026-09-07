@@ -18,7 +18,7 @@ async function flushEffects(rounds = 40) {
   });
 }
 
-it("O5 does not lose the new target when unmounted during the older target save", async () => {
+it("does not lose the new target when unmounted during the older target save", async () => {
   (
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -98,7 +98,7 @@ it("O5 does not lose the new target when unmounted during the older target save"
     await Promise.resolve();
   });
   await flushEffects();
-  console.log("O5 server after unmount:", JSON.stringify(server.models), "PUTs:", putCount);
+
 
   expect(server.models).toEqual({
     "model-a": { block: ["aaa"], allow: [] },

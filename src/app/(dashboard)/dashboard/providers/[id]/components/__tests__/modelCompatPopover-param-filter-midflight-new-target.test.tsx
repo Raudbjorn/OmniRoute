@@ -18,7 +18,7 @@ async function flushEffects(rounds = 40) {
   });
 }
 
-it("O5 preserves a new target edited while the older target save is in flight", async () => {
+it("preserves a new target edited while the older target save is in flight", async () => {
   (
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;

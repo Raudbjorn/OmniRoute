@@ -11,7 +11,10 @@
  */
 
 import { detectFormatFromEndpoint } from "../../services/provider.ts";
-import { shouldUseNativeCodexPassthrough } from "./passthroughHelpers.ts";
+import {
+  shouldUseNativeCodexPassthrough,
+  shouldUseNativeXaiResponsesPassthrough,
+} from "./passthroughHelpers.ts";
 import { FORMATS } from "../../translator/formats.ts";
 
 /** True when the request originates from a Copilot client (matched by user-agent or any header). */
@@ -94,6 +97,11 @@ export function resolveChatCoreRequestFormat(opts: {
     body,
     headers: clientRawRequest?.headers,
   });
+  const nativeXaiResponsesPassthrough = shouldUseNativeXaiResponsesPassthrough({
+    provider,
+    sourceFormat,
+    endpointPath,
+  });
   const isDroidCLI =
     userAgent?.toLowerCase().includes("droid") || userAgent?.toLowerCase().includes("codex-cli");
   const copilotCompatibleReasoning = isCopilotClient(clientRawRequest?.headers, userAgent);
@@ -107,6 +115,7 @@ export function resolveChatCoreRequestFormat(opts: {
     sourceFormat,
     isResponsesEndpoint,
     nativeCodexPassthrough,
+    nativeXaiResponsesPassthrough,
     isDroidCLI,
     copilotCompatibleReasoning,
     isOpencodeClient: isOpencodeClientRequest,

@@ -19,25 +19,20 @@ test("isVertexGeminiProvider matches only the vertex provider ids", () => {
   assert.equal(h.isVertexGeminiProvider(undefined), false);
 });
 
-test("buildChangedToolNameMap keeps identity + renamed entries (#9008), else null", () => {
-  // Identity mappings are retained so Claude Code PascalCase tools can be
-  // restored when Gemini/Antigravity echoes a different case (#9008).
+test("buildChangedToolNameMap includes all entries with lowercase aliases", () => {
   const changed = h.buildChangedToolNameMap(
     new Map([
-      ["a", "a"],
+      ["Bash", "Bash"],
       ["b_sanitized", "b"],
     ])
   );
-  assert.deepEqual(
-    [...(changed ?? new Map()).entries()],
-    [
-      ["a", "a"],
-      ["b_sanitized", "b"],
-    ]
-  );
-  assert.deepEqual([...(h.buildChangedToolNameMap(new Map([["a", "a"]])) ?? new Map()).entries()], [
-    ["a", "a"],
-  ]);
+  const entries = [...(changed ?? new Map()).entries()];
+  // Identity entry ("Bash" → "Bash") is included, plus lowercase alias ("bash" → "Bash")
+  assert.ok(entries.some(([k]) => k === "Bash"));
+  assert.ok(entries.some(([k, v]) => k === "bash" && v === "Bash"));
+  // Renamed entry is included as before
+  assert.ok(entries.some(([k, v]) => k === "b_sanitized" && v === "b"));
+  // Empty map still returns null
   assert.equal(h.buildChangedToolNameMap(new Map()), null);
 });
 

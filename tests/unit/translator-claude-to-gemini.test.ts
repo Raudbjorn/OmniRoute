@@ -103,7 +103,7 @@ test("Claude -> Gemini maps system, thinking, tool use, tool result and tools", 
     functionResponse: {
       id: "tu_1",
       name: "weather",
-      response: { result: { result: "20C" } },
+      response: { result: "20C" },
     },
   });
   assert.equal(result.generationConfig.maxOutputTokens, 256);
@@ -199,6 +199,16 @@ test("Claude -> Gemini omits unsigned functionCall instead of injecting a fake t
     JSON.stringify(result).includes('"functionCall"'),
     false,
     "signature-less tool_use must not become a native functionCall"
+  );
+  assert.equal(
+    JSON.stringify(result).includes('"thoughtSignature"'),
+    false,
+    "the translator must not synthesize a fake thought signature"
+  );
+  assert.equal(
+    JSON.stringify(result).includes("read_file"),
+    false,
+    "the omitted unsigned call must not leak its tool payload elsewhere"
   );
 });
 

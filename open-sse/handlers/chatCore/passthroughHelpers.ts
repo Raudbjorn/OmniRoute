@@ -1,7 +1,12 @@
 import { FORMATS } from "../../translator/formats.ts";
 import { isVerifiedNativeCodexRequest } from "../../config/codexIdentity.ts";
 import { isClaudeCodeCompatibleProvider } from "../../services/claudeCodeCompatible.ts";
+import { isResponsesEndpointPath } from "../../utils/responsesEndpoint.ts";
 import { getHeaderValueCaseInsensitive } from "./headers.ts";
+
+export { isResponsesEndpointPath };
+
+export const XAI_API_PROVIDERS = new Set(["xai", "xai-oauth", "xao"]);
 
 export function shouldUseNativeCodexPassthrough({
   provider,
@@ -23,6 +28,51 @@ export function shouldUseNativeCodexPassthrough({
   const segments = normalizedEndpoint.split("/");
   if (!segments.includes("responses")) return false;
   return provider === "codex" || isVerifiedNativeCodexRequest(body, headers);
+}
+
+export function shouldUseNativeXaiResponsesPassthrough({
+  provider,
+  sourceFormat,
+  endpointPath,
+}: {
+  provider?: string | null;
+  sourceFormat?: string | null;
+  endpointPath?: string | null;
+}): boolean {
+  if (!provider || !XAI_API_PROVIDERS.has(provider)) return false;
+  if (sourceFormat !== FORMATS.OPENAI_RESPONSES) return false;
+  return isResponsesEndpointPath(endpointPath);
+}
+
+export function stampNativeResponsesPassthroughBody(
+  body: Record<string, unknown>,
+  mode: "codex" | "xai" | "openai-compatible"
+): Record<string, unknown> {
+  if (mode === "codex") return { ...body, _nativeCodexPassthrough: true };
+  if (mode === "xai") return { ...body, _nativeXaiResponsesPassthrough: true };
+  return { ...body, _nativeOpenAICompatibleResponsesPassthrough: true };
+}
+
+export function shouldUseNativeOpenAICompatibleResponsesPassthrough({
+  provider,
+  sourceFormat,
+  endpointPath,
+  providerSpecificData,
+}: {
+  provider?: string | null;
+  sourceFormat?: string | null;
+  endpointPath?: string | null;
+  providerSpecificData?: unknown;
+}): boolean {
+  if (!provider?.startsWith("openai-compatible-")) return false;
+  if (sourceFormat !== FORMATS.OPENAI_RESPONSES) return false;
+  if (providerSpecificData && typeof providerSpecificData === "object") {
+    const psd = providerSpecificData as Record<string, unknown>;
+    if (psd.apiType === "responses" || psd._omnirouteForceResponsesUpstream === true) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**

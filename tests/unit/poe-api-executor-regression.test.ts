@@ -22,12 +22,10 @@ const { getExecutor, hasSpecializedExecutor } = await import("../../open-sse/exe
 const { DefaultExecutor } = await import("../../open-sse/executors/default.ts");
 const { PoeWebExecutor } = await import("../../open-sse/executors/poe-web.ts");
 const { getRegistryEntry } = await import("../../open-sse/config/providerRegistry.ts");
-const { resolveExecutionCredentials } = await import(
-  "../../open-sse/handlers/chatCore/executionCredentials.ts"
-);
-const { POE_DEFAULT_BASE_URL, resolvePoeUpstreamUrl } = await import(
-  "../../open-sse/config/providers/registry/poe/index.ts"
-);
+const { resolveExecutionCredentials } =
+  await import("../../open-sse/handlers/chatCore/executionCredentials.ts");
+const { POE_DEFAULT_BASE_URL, resolvePoeUpstreamUrl } =
+  await import("../../open-sse/config/providers/registry/poe/index.ts");
 const core = await import("../../src/lib/db/core.ts");
 
 test.after(() => {
@@ -36,7 +34,7 @@ test.after(() => {
   } catch {
     // ignore
   }
-  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 const CHAT_URL = "https://api.poe.com/v1/chat/completions";
@@ -49,17 +47,18 @@ function headerRecord(headers: Record<string, string>): Record<string, string> {
   return out;
 }
 
-test("#8969: getExecutor(poe) selects DefaultExecutor, not PoeWebExecutor", () => {
+test("#8969: getExecutor(poe) selects DefaultExecutor, not PoeWebExecutor", async () => {
   assert.equal(hasSpecializedExecutor("poe"), false);
-  const executor = getExecutor("poe");
+  const executor = await getExecutor("poe");
   assert.ok(executor instanceof DefaultExecutor);
   assert.equal(executor instanceof PoeWebExecutor, false);
   assert.equal(executor.provider, "poe");
 });
 
-test("#8969: getExecutor(poe-web) still selects PoeWebExecutor", () => {
+test("#8969: getExecutor(poe-web) still selects PoeWebExecutor", async () => {
   assert.equal(hasSpecializedExecutor("poe-web"), true);
-  assert.ok(getExecutor("poe-web") instanceof PoeWebExecutor);
+  const executor = await getExecutor("poe-web");
+  assert.ok(executor instanceof PoeWebExecutor);
 });
 
 test("#8969: registry declares API-key executor + all three Poe protocol URLs", () => {
@@ -82,8 +81,8 @@ test("#8969: registry declares API-key executor + all three Poe protocol URLs", 
   assert.notEqual(gpt.targetFormat, "claude");
 });
 
-test("#8969: buildUrl routes chat / responses / messages correctly", () => {
-  const executor = getExecutor("poe") as DefaultExecutor;
+test("#8969: buildUrl routes chat / responses / messages correctly", async () => {
+  const executor = (await getExecutor("poe")) as DefaultExecutor;
   const creds = { apiKey: "poe-test-key", providerSpecificData: {} };
 
   assert.equal(executor.buildUrl("gemma-4-31b", false, 0, creds), CHAT_URL);
@@ -127,37 +126,40 @@ test("#8969: buildUrl routes chat / responses / messages correctly", () => {
 });
 
 test("#8969: resolvePoeUpstreamUrl normalizes registry-default / bare-host /v1/ / trailing-slash bases", () => {
-  const cases: Array<{ base: string | null | undefined; protocol: "chat" | "responses" | "messages"; expected: string }> =
-    [
-      { base: undefined, protocol: "chat", expected: CHAT_URL },
-      { base: null, protocol: "chat", expected: CHAT_URL },
-      { base: "https://api.poe.com", protocol: "chat", expected: CHAT_URL },
-      { base: "https://api.poe.com/", protocol: "chat", expected: CHAT_URL },
-      { base: "https://api.poe.com/v1", protocol: "chat", expected: CHAT_URL },
-      { base: "https://api.poe.com/v1/", protocol: "chat", expected: CHAT_URL },
-      {
-        base: "https://api.poe.com/v1/chat/completions",
-        protocol: "chat",
-        expected: CHAT_URL,
-      },
-      {
-        base: "https://api.poe.com/v1/chat/completions/",
-        protocol: "chat",
-        expected: CHAT_URL,
-      },
-      { base: "https://api.poe.com/v1", protocol: "responses", expected: RESPONSES_URL },
-      { base: "https://api.poe.com/", protocol: "messages", expected: MESSAGES_URL },
-      {
-        base: "https://custom.example/v1/chat/completions",
-        protocol: "responses",
-        expected: "https://custom.example/v1/responses",
-      },
-      {
-        base: "https://custom.example/v1",
-        protocol: "messages",
-        expected: "https://custom.example/v1/messages",
-      },
-    ];
+  const cases: Array<{
+    base: string | null | undefined;
+    protocol: "chat" | "responses" | "messages";
+    expected: string;
+  }> = [
+    { base: undefined, protocol: "chat", expected: CHAT_URL },
+    { base: null, protocol: "chat", expected: CHAT_URL },
+    { base: "https://api.poe.com", protocol: "chat", expected: CHAT_URL },
+    { base: "https://api.poe.com/", protocol: "chat", expected: CHAT_URL },
+    { base: "https://api.poe.com/v1", protocol: "chat", expected: CHAT_URL },
+    { base: "https://api.poe.com/v1/", protocol: "chat", expected: CHAT_URL },
+    {
+      base: "https://api.poe.com/v1/chat/completions",
+      protocol: "chat",
+      expected: CHAT_URL,
+    },
+    {
+      base: "https://api.poe.com/v1/chat/completions/",
+      protocol: "chat",
+      expected: CHAT_URL,
+    },
+    { base: "https://api.poe.com/v1", protocol: "responses", expected: RESPONSES_URL },
+    { base: "https://api.poe.com/", protocol: "messages", expected: MESSAGES_URL },
+    {
+      base: "https://custom.example/v1/chat/completions",
+      protocol: "responses",
+      expected: "https://custom.example/v1/responses",
+    },
+    {
+      base: "https://custom.example/v1",
+      protocol: "messages",
+      expected: "https://custom.example/v1/messages",
+    },
+  ];
 
   for (const { base, protocol, expected } of cases) {
     assert.equal(
@@ -174,8 +176,8 @@ test("#8969: resolvePoeUpstreamUrl normalizes registry-default / bare-host /v1/ 
   }
 });
 
-test("#8969: buildHeaders uses Bearer auth and never sends Cookie", () => {
-  const executor = getExecutor("poe") as DefaultExecutor;
+test("#8969: buildHeaders uses Bearer auth and never sends Cookie", async () => {
+  const executor = (await getExecutor("poe")) as DefaultExecutor;
   for (const stream of [false, true]) {
     const headers = headerRecord(
       executor.buildHeaders({ apiKey: "poe-test-key", providerSpecificData: {} }, stream)
@@ -199,7 +201,7 @@ test("#8969: resolveExecutionCredentials forces responses upstream for poe", () 
 });
 
 test("#8969: mocked execute posts Chat Completions with Bearer, no Cookie, stripped model", async () => {
-  const executor = getExecutor("poe") as DefaultExecutor;
+  const executor = (await getExecutor("poe")) as DefaultExecutor;
   const originalFetch = globalThis.fetch;
   const seen: Array<{
     url: string;
@@ -211,7 +213,7 @@ test("#8969: mocked execute posts Chat Completions with Bearer, no Cookie, strip
 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const headers = new Headers(init?.headers);
-    const rawBody = typeof init?.body === "string" ? init.body : "{}";
+    const rawBody = await new Request(input, init).text();
     seen.push({
       url: String(input),
       method: (init?.method || "GET").toUpperCase(),
@@ -258,7 +260,7 @@ test("#8969: mocked execute posts Chat Completions with Bearer, no Cookie, strip
 });
 
 test("#8969: mocked execute routes Responses + Messages fixtures to the right URLs", async () => {
-  const executor = getExecutor("poe") as DefaultExecutor;
+  const executor = (await getExecutor("poe")) as DefaultExecutor;
   const originalFetch = globalThis.fetch;
   let lastUrl = "";
 
@@ -325,7 +327,7 @@ test("#8969: mocked execute routes Responses + Messages fixtures to the right UR
 });
 
 test("#8969: mocked upstream 405 is preserved (not swallowed)", async () => {
-  const executor = getExecutor("poe") as DefaultExecutor;
+  const executor = (await getExecutor("poe")) as DefaultExecutor;
   const originalFetch = globalThis.fetch;
 
   globalThis.fetch = (async () => {

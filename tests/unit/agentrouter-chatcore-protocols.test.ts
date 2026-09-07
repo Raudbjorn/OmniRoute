@@ -29,23 +29,23 @@ function createSseResponse(events: string[]) {
   });
 }
 
-async function waitForAsyncSideEffects() {
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setTimeout(resolve, 20));
+async function flushAsyncSideEffects() {
+  // setImmediate rounds drain the event loop more reliably than setTimeout under CI load.
+  for (let i = 0; i < 5; i++) await new Promise((resolve) => setImmediate(resolve));
 }
 
 test.afterEach(async () => {
   globalThis.fetch = originalFetch;
-  await waitForAsyncSideEffects();
+  await flushAsyncSideEffects();
   core.resetDbInstance();
-  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   fs.mkdirSync(TEST_DATA_DIR, { recursive: true });
 });
 
 test.after(() => {
   globalThis.fetch = originalFetch;
   core.resetDbInstance();
-  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });
+  fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
 test("AgentRouter Responses requests automatically use the native Responses protocol", async () => {
@@ -112,7 +112,7 @@ test("AgentRouter Responses requests automatically use the native Responses prot
       body: structuredClone(body),
       headers: new Headers({ accept: "application/json", originator: "codex_cli_rs" }),
     },
-    userAgent: "codex_cli_rs/0.146.0",
+    userAgent: "codex_cli_rs/0.149.0",
   });
 
   assert.ok(captured);
@@ -176,7 +176,7 @@ test("AgentRouter OpenAI Chat requests automatically use the native Chat protoco
       body: structuredClone(body),
       headers: new Headers({ accept: "application/json" }),
     },
-    userAgent: "codex_cli_rs/0.146.0",
+    userAgent: "codex_cli_rs/0.149.0",
   });
 
   assert.equal(result.success, true);
@@ -304,7 +304,7 @@ test("AgentRouter Responses streaming stays native without a connection protocol
       body: structuredClone(body),
       headers: new Headers({ accept: "text/event-stream", originator: "codex_cli_rs" }),
     },
-    userAgent: "codex_cli_rs/0.146.0",
+    userAgent: "codex_cli_rs/0.149.0",
   });
 
   assert.equal(result.success, true);
@@ -383,7 +383,7 @@ test("AgentRouter OpenAI Chat streaming stays native without a connection protoc
       body: structuredClone(body),
       headers: new Headers({ accept: "text/event-stream" }),
     },
-    userAgent: "codex_cli_rs/0.146.0",
+    userAgent: "codex_cli_rs/0.149.0",
   });
 
   assert.equal(result.success, true);
