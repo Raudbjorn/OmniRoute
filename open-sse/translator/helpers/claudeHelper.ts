@@ -427,12 +427,73 @@ export function sanitizeEmptyToolUseHistory(
   let changed = false;
   const out: ClaudeMessage[] = [];
 
-  for (const msg of messages) {
-    if (!Array.isArray(msg.content)) {
-      if (typeof msg.content === "string" && msg.content.trim() === "(empty response)") {
+  // First pass: identify every (empty response) string-content message and the
+  // set of tool_use ids dropped during array-content processing. The
+  // placeholder removal in the second pass only targets placeholders whose
+  // paired tool_use actually got dropped — never every historical (empty
+  // response) message, which would silently delete unrelated content and
+  // reorder turns.
+  const emptyResponseIndices = new Set<number>();
+  const droppedIdsFirstPass = new Set<string>();
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (typeof msg.content === "string" && msg.content.trim() === "(empty response)") {
+      emptyResponseIndices.add(i);
+      continue;
+    }
+    if (!Array.isArray(msg.content)) continue;
+    for (const b of msg.content) {
+      if (
+        b &&
+        typeof b === "object" &&
+        b.type === "tool_use" &&
+        typeof b.id === "string" &&
+        b.id.length > 0 &&
+        typeof b.name === "string" &&
+        requiredTools.has(b.name) &&
+        isEmptyInput(b.input)
+      ) {
+        droppedIdsFirstPass.add(b.id);
+      }
+    }
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (emptyResponseIndices.has(i)) {
+      // Only drop the (empty response) placeholder if some adjacent message
+      // actually had a paired tool_use that this pass dropped — that is, the
+      // placeholder represented the missing tool_result. Without this guard
+      // the function would silently delete every historical "(empty response)"
+      // whenever ANY declared tool has required fields, corrupting unrelated
+      // turns.
+      const adjacentDrops = (() => {
+        const prev = messages[i - 1];
+        const next = messages[i + 1];
+        const touches = (m: typeof msg | undefined): boolean => {
+          if (!m || !Array.isArray(m.content)) return false;
+          return m.content.some(
+            (b) =>
+              b &&
+              typeof b === "object" &&
+              ((b.type === "tool_use" &&
+                typeof b.id === "string" &&
+                droppedIdsFirstPass.has(b.id)) ||
+                (b.type === "tool_result" &&
+                  typeof b.tool_use_id === "string" &&
+                  droppedIdsFirstPass.has(b.tool_use_id)))
+          );
+        };
+        return touches(prev) || touches(next);
+      })();
+      if (adjacentDrops) {
         changed = true;
         continue;
       }
+      out.push(msg);
+      continue;
+    }
+    if (!Array.isArray(msg.content)) {
       out.push(msg);
       continue;
     }

@@ -13,11 +13,11 @@ on the following routes:
 |---|---|---|---|
 | `/v1/chat/completions` | POST | Bearer OmniRoute | OpenAI-compatible streaming chat |
 | `/v1/messages` | POST | Bearer OmniRoute | Anthropic-compatible streaming chat |
-| `/api/v1/providers/freebuff/quota` | GET | Bearer OmniRoute | Current quota state |
-| `/api/v1/providers/freebuff/streak` | GET | Bearer OmniRoute | Gamification streak |
-| `/api/v1/providers/freebuff/login/start` | POST | Bearer OmniRoute | Start PKCE flow |
-| `/api/v1/providers/freebuff/login/status` | GET | Bearer OmniRoute | Poll PKCE flow status |
-| `/api/v1/providers/freebuff/session` | DELETE | Bearer OmniRoute | Release active session |
+| `/api/v1/providers/freebuff/models` | GET | Bearer OmniRoute | Per-provider model catalog (generic `[provider]/models` route) |
+| `/api/v1/providers/freebuff/limits` | GET | Bearer OmniRoute | Per-provider issuance limits (generic `[provider]/limits` route) |
+| `/api/v1/providers/freebuff/chat` | POST | Bearer OmniRoute | Per-provider OpenAI-compatible chat (generic `[provider]/chat` route) |
+| `/api/v1/providers/freebuff/embeddings` | POST | Bearer OmniRoute | Per-provider embeddings (generic `[provider]/embeddings` route) |
+| `/api/v1/providers/freebuff/images` | POST | Bearer OmniRoute | Per-provider image generation (generic `[provider]/images` route) |
 
 All endpoints accept and return `application/json` unless noted
 otherwise. The two chat endpoints return `text/event-stream` when

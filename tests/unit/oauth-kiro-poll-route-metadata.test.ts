@@ -93,7 +93,7 @@ test("POST /api/oauth/kiro/poll persists imported metadata on created connection
     const connections = await localDb.getProviderConnections({ provider: "kiro" });
     assert.equal(connections.length, 1);
 
-    const created = connections[0] as any;
+    const created = connections[0];
     assert.equal(created.name, "Imported Name");
     assert.equal(created.displayName, "Imported Account");
     assert.equal(created.group, "aws-kiro-import");

@@ -512,7 +512,6 @@ export function openaiToClaudeResponse(chunk, state) {
         // empty `name` field — Anthropic rejects empty tool names, and the test
         // suite at tests/unit/openai-to-claude-glm-split-tool-name-2077.test.ts
         // asserts no tool_use event is emitted before the name lands.
-
         if (!toolInfo.startEmitted && toolInfo.name) {
           toolInfo.startEmitted = true;
           results.push({
@@ -521,17 +520,29 @@ export function openaiToClaudeResponse(chunk, state) {
             content_block: {
               type: "tool_use",
               id: toolInfo.id,
-              name: toolInfo.name || "",
+              name: toolInfo.name,
               input: {},
             },
           });
+          // Replay the full argument buffer now that the block is open.
+          // Without this replay the late-arriving name would surface a tool_use
+          // block with no input_json_delta history, and downstream code that
+          // diffed the argument stream would observe an empty input (#2077).
+          if (toolInfo.argBuffer) {
+            results.push({
+              type: "content_block_delta",
+              index: toolInfo.blockIndex,
+              delta: { type: "input_json_delta", partial_json: toolInfo.argBuffer },
+            });
+          }
         }
       }
 
       if (tc.function?.arguments) {
         if (toolInfo) {
           // Always buffer the raw stream so shimmed tools can re-emit a
-          // corrected JSON at stop time.
+          // corrected JSON at stop time AND so a late-arriving name can replay
+          // the accumulated arguments after content_block_start (#2077).
           const existingArgs = toolInfo.argBuffer || "";
           const nextArgs = appendToolCallArgumentDelta(existingArgs, tc.function.arguments);
           let deltaStr = nextArgs.slice(existingArgs.length);
@@ -542,17 +553,11 @@ export function openaiToClaudeResponse(chunk, state) {
             continue;
           }
 
-          // NOTE: The regex-based "Fix #1852" strip that previously ran here was
-          // removed in #4951. That strip matched patterns like `"key":""` and
-          // `"key":[]` to remove spurious placeholder fields that some models emit
-          // as noise. However, since #3762 the snapshot-dedup logic in
-          // appendToolCallArgumentDelta already collapses repeated/growing snapshots
-          // into a single delta, so noise-only chunks are naturally suppressed.
-          // More critically, the regex unconditionally deleted any field whose value
-          // happened to be "" or [], silently corrupting intentional empty-string or
-          // empty-array arguments (e.g. {"file_path":"","content":"text"} →
-          // {"content":"text"}). Emit deltaStr as-is; the Claude client parses the
-          // assembled partial_json fragments and tolerates unknown extra fields.
+          // Suppress passthrough while content_block_start is still pending.
+          // Replayed in one shot after the start event lands (#2077 / GLM).
+          if (!toolInfo.startEmitted) {
+            continue;
+          }
 
           results.push({
             type: "content_block_delta",

@@ -250,8 +250,15 @@ export const CREDITS_EXHAUSTED_SIGNALS = [
   // when the account's billing credits run out. Without this signal the
   // error stays unclassified (errorType=null), so the connection is never
   // marked credits_exhausted and keeps being re-selected on every request.
-  "insufficient credits",
   "insufficient credit",
+  // Kiro-specific quota patterns. Kiro's account-deactivation logic keys on
+  // these phrases; without them the connection stays isActive=true and keeps
+  // being re-selected on every request (see tests/unit/kiro-auto-deactivate.test.ts).
+  // Anchored on language that is Kiro-distinguishing: "usage limit exceeded"
+  // and "ThrottlingException" are Kiro's specific phrasing and do not collide
+  // with generic 429 bodies elsewhere in the system.
+  "usage limit exceeded",
+  "throttlingexception",
 ];
 
 // T11: Signals that indicate OAuth token is invalid/expired (not permanent deactivation)

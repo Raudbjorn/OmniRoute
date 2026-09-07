@@ -2,11 +2,23 @@
 
 import { useEffect } from "react";
 
+import {
+  isOmniRouteServiceWorkerScript,
+  shouldEnablePwaRegistration,
+} from "@/shared/utils/pwaRegistration";
+
 export function PwaRegister() {
   useEffect(() => {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
       return;
     }
+
+    const hostname =
+      typeof window.location !== "undefined" ? window.location.hostname : null;
+    const enabled = shouldEnablePwaRegistration({
+      hostname,
+      isDevelopment: process.env.NODE_ENV !== "production",
+    });
 
     // Disable service worker in development to avoid chunk loading / HMR conflicts.
     // A visitor who previously loaded a production build on this origin (or an
@@ -17,10 +29,26 @@ export function PwaRegister() {
     // the stale worker never goes away on its own, that repeats forever
     // (visible as an unexplained refresh loop). Proactively unregister and
     // drop its caches instead of merely skipping a new registration.
-    if (process.env.NODE_ENV !== "production") {
+    // The loopback guard prevents the same breakage on a production build
+    // accidentally served from localhost (where the worker would intercept
+    // requests to services that are not actually present on loopback).
+    if (!enabled) {
       navigator.serviceWorker
         .getRegistrations()
-        .then((registrations) => Promise.all(registrations.map((r) => r.unregister())))
+        .then((registrations) =>
+          Promise.all(
+            registrations
+              .filter((registration) =>
+                isOmniRouteServiceWorkerScript(
+                  registration.active?.scriptURL ??
+                    registration.installing?.scriptURL ??
+                    registration.waiting?.scriptURL ??
+                    null
+                )
+              )
+              .map((registration) => registration.unregister())
+          )
+        )
         .catch(() => {});
       if (typeof caches !== "undefined") {
         caches
