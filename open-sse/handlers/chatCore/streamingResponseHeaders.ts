@@ -1,3 +1,4 @@
+import { getSidecarResponseHeaders } from "../../utils/upstreamResponseHeaders.ts";
 /**
  * chatCore streaming response headers (Quality Gate v2 / Fase 9 — chatCore god-file decomposition,
  * #3501).
@@ -37,5 +38,5 @@ export function assembleStreamingResponseHeaders(
   if (args.compressionResponseMeta) {
     responseHeaders[OMNIROUTE_RESPONSE_HEADERS.compression] = args.compressionResponseMeta;
   }
-  return responseHeaders;
+  return { ...responseHeaders, ...getSidecarResponseHeaders(args.providerHeaders) };
 }

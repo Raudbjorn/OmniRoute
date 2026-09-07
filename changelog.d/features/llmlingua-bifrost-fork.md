@@ -1,0 +1,1 @@
+- Port LLMLingua supervised HTTP compression (#12967) and Bifrost dispatch for chat ingress (#12953), with native policy enforcement, cancellation, fallback, and credential-safe response headers. LLMLingua uses the existing ONNX worker instead of the upstream placeholder server. Thanks @rqzbeh.

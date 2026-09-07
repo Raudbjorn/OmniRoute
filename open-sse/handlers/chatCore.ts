@@ -5411,6 +5411,7 @@ export async function handleChatCore({
       clientResponse: translatedResponse,
     });
     const responseHeaders = buildNonStreamingResponseHeaders({
+      providerHeaders: providerResponse.headers,
       provider,
       model,
       startTime,
