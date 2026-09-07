@@ -11,6 +11,7 @@ import { gunzipSync } from "node:zlib";
 
 import { PROVIDERS } from "../config/constants.ts";
 import { buildErrorBody, sanitizeErrorMessage } from "../utils/error.ts";
+import { sanitizeOpenAITools } from "../services/toolSchemaSanitizer.ts";
 import { BaseExecutor, mergeUpstreamExtraHeaders, type ExecuteInput } from "./base.ts";
 
 const DEVIN_DESKTOP_BASE_URL = "https://server.codeium.com";
@@ -30,6 +31,21 @@ const CONNECT_COMPRESSED_FLAG = 0x01;
 const CONNECT_END_STREAM_FLAG = 0x02;
 const MAX_CONNECT_FRAME_BYTES = 16 * 1024 * 1024;
 const MAX_AUTH_RESPONSE_BYTES = 1024 * 1024;
+
+// CompletionConfig defaults for the Devin Desktop Connect GetChatMessage wire.
+// Field #2 in the CompletionConfiguration message enforces the output cap; without
+// it the server falls back to a very small default (observed ~1024 tokens for
+// swe-1-7), which truncates multi-tool and long-form responses.
+const DEVIN_DESKTOP_DEFAULT_MAX_TOKENS = 8192;
+const DEVIN_DESKTOP_DEFAULT_TEMPERATURE = 1.0;
+// The upstream rejects exactly temperature=0 with an opaque "internal error";
+// 0.001 is the closest greedy value the server accepts (verified by WindsurfAPI).
+const DEVIN_DESKTOP_MIN_TEMPERATURE = 0.001;
+const DEVIN_DESKTOP_DEFAULT_TOP_P = 0.95;
+const DEVIN_DESKTOP_DEFAULT_TOP_K = 40;
+// max_newlines (field #3) is a no-op cap; set it to a large, safe context-window
+// value so it cannot become the binding output limit.
+const DEVIN_DESKTOP_DEFAULT_MAX_NEWLINES = 128_000;
 
 export function resolveDevinDesktopVersion(): string {
   const override = process.env.DEVIN_DESKTOP_VERSION?.trim() ?? "";
@@ -87,6 +103,13 @@ function encodeVarintField(fieldNumber: number, value: number): Uint8Array {
     : concatBytes([encodeVarint(fieldNumber << 3), encodeVarint(value)]);
 }
 
+function encodeFixed64Field(fieldNumber: number, value: number): Uint8Array {
+  if (!Number.isFinite(value)) return new Uint8Array(0);
+  const bytes = new Uint8Array(8);
+  new DataView(bytes.buffer).setFloat64(0, value, true);
+  return concatBytes([encodeVarint((fieldNumber << 3) | 1), bytes]);
+}
+
 export type DevinDesktopToolCallInput = {
   id: string;
   name: string;
@@ -130,6 +153,11 @@ export type DevinDesktopRequestInput = DevinDesktopMetadataInput & {
   tools?: DevinDesktopToolInput[];
   disableParallelToolCalls?: boolean;
   toolChoice?: DevinDesktopToolChoice;
+  maxTokens?: number;
+  maxNewlines?: number;
+  temperature?: number;
+  topP?: number;
+  topK?: number;
 };
 
 function encodeMetadata(input: DevinDesktopMetadataInput): Uint8Array {
@@ -186,6 +214,36 @@ function encodeChatToolChoice(choice: DevinDesktopToolChoice): Uint8Array {
     : encodeString(2, choice.toolName);
 }
 
+function toPositiveFinite(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  return undefined;
+}
+
+function toClampedTemperature(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.max(value, DEVIN_DESKTOP_MIN_TEMPERATURE);
+  }
+  return DEVIN_DESKTOP_DEFAULT_TEMPERATURE;
+}
+
+/** Encode the CompletionConfiguration sub-message (GetChatMessageRequest field #8). */
+function encodeCompletionConfig(input: DevinDesktopRequestInput): Uint8Array {
+  const maxTokens = toPositiveFinite(input.maxTokens) ?? DEVIN_DESKTOP_DEFAULT_MAX_TOKENS;
+  const maxNewlines = toPositiveFinite(input.maxNewlines) ?? DEVIN_DESKTOP_DEFAULT_MAX_NEWLINES;
+  const temperature = toClampedTemperature(input.temperature);
+  const topP = toPositiveFinite(input.topP) ?? DEVIN_DESKTOP_DEFAULT_TOP_P;
+  const topK = toPositiveFinite(input.topK) ?? DEVIN_DESKTOP_DEFAULT_TOP_K;
+
+  return concatBytes([
+    encodeVarintField(1, 1),
+    encodeVarintField(2, maxTokens),
+    encodeVarintField(3, maxNewlines),
+    encodeFixed64Field(5, temperature),
+    encodeVarintField(7, topK),
+    encodeFixed64Field(8, topP),
+  ]);
+}
+
 /** Encode the verified exa.api_server_pb.GetChatMessageRequest wire schema. */
 export function encodeDevinDesktopRequest(input: DevinDesktopRequestInput): Uint8Array {
   const fields: Uint8Array[] = [
@@ -193,7 +251,10 @@ export function encodeDevinDesktopRequest(input: DevinDesktopRequestInput): Uint
     encodeString(2, input.systemPrompt),
   ];
   for (const prompt of input.prompts) fields.push(encodeField(3, encodeChatMessagePrompt(prompt)));
-  fields.push(encodeVarintField(7, 5)); // CHAT_MESSAGE_REQUEST_TYPE_CASCADE
+  fields.push(
+    encodeVarintField(7, 5), // CHAT_MESSAGE_REQUEST_TYPE_CASCADE
+    encodeField(8, encodeCompletionConfig(input))
+  );
   for (const tool of input.tools ?? []) {
     fields.push(encodeField(10, encodeChatToolDefinition(tool)));
   }
@@ -262,6 +323,52 @@ function convertHistoryToolCalls(
   return result;
 }
 
+function sanitizeDevinPrompt(text: string): string {
+  if (!text) return "";
+  let out = text;
+  out = out.replace(
+    /You are Claude Code, Anthropic's official CLI for Claude\.?/gi,
+    "You are an AI software engineering agent."
+  );
+  out = out.replace(
+    /You are a Claude agent, built on Anthropic's Claude Agent SDK\.?/gi,
+    "You are an AI software engineering agent."
+  );
+  out = out.replace(
+    /You are (?:a|an) (?:Claude )?agent(?: for Claude Code)?, built on Anthropic's Claude Agent SDK\.?/gi,
+    "You are an AI software engineering agent."
+  );
+  out = out.replace(
+    /You are an agent for Claude Code, Anthropic's official CLI for Claude\.?/gi,
+    "You are an AI software engineering agent."
+  );
+  out = out.replace(
+    /You are Claude[^.\n]*Anthropic[^.\n]*\./gi,
+    "You are an AI software engineering agent."
+  );
+  out = out.replace(
+    /For clear communication with the user\s+(?:the\s+)?assistant\s+MUST\s+avoid\s+using\s+emojis\.?/gi,
+    "Avoid using emojis."
+  );
+  out = out.replace(
+    /(?:the\s+)?assistant\s+MUST\s+avoid\s+using\s+emojis\.?/gi,
+    "Avoid using emojis."
+  );
+  out = out.replace(
+    /IMPORTANT: Assist with authorized security testing[\s\S]*?defensive use cases\./gi,
+    ""
+  );
+  out = out.replace(
+    /Fast mode for Claude Code uses Claude Opus[\s\S]*?available on Opus 5\/4\.8\./gi,
+    ""
+  );
+  out = out.replace(
+    /.*Claude Code is available as a CLI in the terminal.*claude\.ai\/code.*\n?/gi,
+    ""
+  );
+  return out.trim();
+}
+
 function convertMessages(messages: OpenAIMessage[]): {
   systemPrompt: string;
   prompts: DevinDesktopPromptInput[];
@@ -270,7 +377,13 @@ function convertMessages(messages: OpenAIMessage[]): {
   const prompts: DevinDesktopPromptInput[] = [];
   for (const message of messages) {
     const role = String(message.role || "user");
-    const prompt = messageText(message.content);
+    const rawPrompt = messageText(message.content);
+    // Identity rewriting only applies to system-ish roles — that is where the
+    // Claude Code identity/disclaimer text lives. User, assistant and tool
+    // content must pass through verbatim so real conversation data is never
+    // rewritten by the sanitizer.
+    const prompt =
+      role === "system" || role === "developer" ? sanitizeDevinPrompt(rawPrompt) : rawPrompt;
     if (role === "system" || role === "developer") {
       if (prompt) systemParts.push(prompt);
       continue;
@@ -297,16 +410,156 @@ type OpenAIFunctionTool = {
   };
 };
 
+const DEVIN_MAX_TOOL_DESC_LEN = 200;
+const DEVIN_MAX_TOOL_SCHEMA_LEN = 2500;
+const DEVIN_TOOLS_SIZE_BUDGET = 52000;
+const DEVIN_TIER2_THRESHOLD = 30000;
+const DEVIN_TIER3_THRESHOLD = 10000;
+const DEVIN_TIER2_DESC_LEN = 120;
+const DEVIN_TIER3_DESC_LEN = 60;
+
+function sanitizeJsonSchema(node: unknown): unknown {
+  if (node === null || typeof node !== "object") return node;
+  if (Array.isArray(node)) return node.map(sanitizeJsonSchema);
+  const obj = node as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  const KEEP = new Set([
+    "type",
+    "properties",
+    "required",
+    "enum",
+    "items",
+    "anyOf",
+    "oneOf",
+    "allOf",
+    "const",
+    "description",
+    "additionalProperties",
+    "minimum",
+    "maximum",
+    "exclusiveMinimum",
+    "exclusiveMaximum",
+    "minLength",
+    "maxLength",
+    "pattern",
+    "format",
+    "minItems",
+    "maxItems",
+    "uniqueItems",
+    "multipleOf",
+  ]);
+  for (const [k, v] of Object.entries(obj)) {
+    if (!KEEP.has(k)) continue;
+    if (k === "description") {
+      const s = typeof v === "string" ? v : String(v);
+      out[k] = s.length > 80 ? s.slice(0, 80) + "…" : s;
+    } else if (k === "properties") {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const props: Record<string, unknown> = {};
+        for (const [pk, pv] of Object.entries(v as Record<string, unknown>)) {
+          props[pk] = sanitizeJsonSchema(pv);
+        }
+        out[k] = props;
+      }
+    } else {
+      out[k] = sanitizeJsonSchema(v);
+    }
+  }
+  return out;
+}
+
+const DEVIN_CRITICAL_BUILTINS = new Set([
+  "Write",
+  "Edit",
+  "MultiEdit",
+  "Read",
+  "Bash",
+  "Glob",
+  "Grep",
+  "WebSearch",
+  "WebFetch",
+  "TodoWrite",
+  "NotebookEdit",
+  "LS",
+  "Skill",
+  "TaskCreate",
+  "TaskUpdate",
+  "TaskList",
+  "EnterWorktree",
+  "ExitWorktree",
+]);
+
 function convertTools(tools: unknown): DevinDesktopToolInput[] {
-  if (!Array.isArray(tools)) return [];
+  if (!Array.isArray(tools) || tools.length === 0) return [];
+  const allTools = sanitizeOpenAITools(tools) as OpenAIFunctionTool[];
   const result: DevinDesktopToolInput[] = [];
-  for (const tool of tools as OpenAIFunctionTool[]) {
-    if (tool?.type !== "function" || typeof tool.function?.name !== "string") continue;
+
+  const criticalBuiltinTools = allTools.filter(
+    (t) => typeof t?.function?.name === "string" && DEVIN_CRITICAL_BUILTINS.has(t.function.name)
+  );
+  const mcpTools = allTools.filter(
+    (t) =>
+      typeof t?.function?.name === "string" &&
+      t.function.name.startsWith("mcp__") &&
+      !DEVIN_CRITICAL_BUILTINS.has(t.function.name)
+  );
+  const otherBuiltinTools = allTools.filter(
+    (t) =>
+      typeof t?.function?.name === "string" &&
+      !t.function.name.startsWith("mcp__") &&
+      !DEVIN_CRITICAL_BUILTINS.has(t.function.name)
+  );
+  const orderedTools = [...criticalBuiltinTools, ...mcpTools, ...otherBuiltinTools];
+
+  let totalSize = 0;
+  for (const t of orderedTools) {
+    if (typeof t?.function?.name !== "string") continue;
+    const name = t.function.name;
+    const rawDesc = typeof t.function.description === "string" ? t.function.description : "";
+
+    const remaining = DEVIN_TOOLS_SIZE_BUDGET - totalSize;
+    let desc: string;
+    let schemaStr: string;
+
+    if (remaining > DEVIN_TIER2_THRESHOLD) {
+      desc =
+        rawDesc.length > DEVIN_MAX_TOOL_DESC_LEN
+          ? rawDesc.slice(0, DEVIN_MAX_TOOL_DESC_LEN) + "…"
+          : rawDesc;
+      try {
+        const sanitized = sanitizeJsonSchema(t.function.parameters);
+        schemaStr = t.function.parameters ? JSON.stringify(sanitized) : "{}";
+      } catch {
+        schemaStr = "{}";
+      }
+      if (schemaStr.length > DEVIN_MAX_TOOL_SCHEMA_LEN) {
+        schemaStr = '{"type":"object"}';
+      }
+    } else if (remaining > DEVIN_TIER3_THRESHOLD) {
+      desc =
+        rawDesc.length > DEVIN_TIER2_DESC_LEN
+          ? rawDesc.slice(0, DEVIN_TIER2_DESC_LEN) + "…"
+          : rawDesc;
+      schemaStr = '{"type":"object"}';
+    } else {
+      desc =
+        rawDesc.length > DEVIN_TIER3_DESC_LEN
+          ? rawDesc.slice(0, DEVIN_TIER3_DESC_LEN) + "…"
+          : rawDesc;
+      schemaStr = "{}";
+    }
+
+    const entrySize = desc.length + schemaStr.length + name.length;
+    if (totalSize + entrySize > DEVIN_TOOLS_SIZE_BUDGET) {
+      break;
+    }
+    totalSize += entrySize;
+
     result.push({
-      name: tool.function.name,
-      description: typeof tool.function.description === "string" ? tool.function.description : "",
-      jsonSchemaString: JSON.stringify(tool.function.parameters ?? {}),
-      strict: tool.function.strict === true,
+      name,
+      description: desc,
+      jsonSchemaString: schemaStr,
+      strict: t.function.strict === true,
     });
   }
   return result;
@@ -483,7 +736,7 @@ function decodeGetChatMessageResponse(bytes: Uint8Array): DecodedResponse {
       result.stopReason = field.value;
     } else if (field.wireType === 2 && field.fieldNumber === 6) {
       const toolCall = decodeToolCall(field.value);
-      if (toolCall.id) result.toolCalls.push(toolCall);
+      if (toolCall.id || toolCall.name || toolCall.arguments) result.toolCalls.push(toolCall);
     } else if (field.wireType === 2 && field.fieldNumber === 7) {
       result.usage = decodeUsage(field.value);
     } else if (field.wireType === 2 && field.fieldNumber === 9) {
@@ -511,6 +764,48 @@ function parseConnectTrailerError(payload: Uint8Array): ConnectTrailerError | nu
   const code = typeof record.code === "string" ? record.code : "upstream_error";
   const message = typeof record.message === "string" ? record.message : "Connect stream failed";
   return { code, message };
+}
+
+export function classifyDevinDesktopError(message: string): {
+  status: number;
+  message: string;
+  code: string;
+  type: string;
+} {
+  const lower = message.toLowerCase();
+
+  // Quota / rate-limit
+  if (
+    /rate limit|resource_exhausted|limit reached|reached .* limit|too many requests|quota|insufficient_quota|exceeded your current quota/i.test(
+      lower
+    )
+  ) {
+    return { status: 429, message, code: "rate_limit_exceeded", type: "rate_limit_error" };
+  }
+
+  // Content / safety policy — deterministic client error per-payload, do NOT rotate accounts or treat as 502
+  if (/content policy|safety filter|blocked|harm|sensitive or unsafe content/i.test(lower)) {
+    return {
+      status: 400,
+      message,
+      code: "content_policy_violation",
+      type: "invalid_request_error",
+    };
+  }
+
+  // Permission / auth errors
+  if (/unauthorized|invalid authentication|invalid credentials|unauthenticated/i.test(lower)) {
+    return { status: 401, message, code: "invalid_api_key", type: "authentication_error" };
+  }
+  if (
+    /permission.*denied|forbidden|not allowed|does not have permission/i.test(lower) &&
+    !/internal error/i.test(lower)
+  ) {
+    return { status: 403, message, code: "permission_denied", type: "permission_error" };
+  }
+
+  // Everything else is a transient 502
+  return { status: 502, message, code: "upstream_error", type: "devin_desktop_error" };
 }
 
 function finishReason(stopReason: number, hasToolCalls: boolean): string {
@@ -676,7 +971,7 @@ export class DevinDesktopExecutor extends BaseExecutor {
       };
     }
 
-    const protobuf = encodeDevinDesktopRequest({
+    const protoPayload = {
       apiKey,
       userJwt,
       model,
@@ -687,9 +982,17 @@ export class DevinDesktopExecutor extends BaseExecutor {
       tools: convertTools(requestBody.tools),
       disableParallelToolCalls: requestBody.parallel_tool_calls === false,
       toolChoice: convertToolChoice(requestBody.tool_choice),
-    });
+      maxTokens: toPositiveFinite(requestBody.max_tokens),
+      temperature: toClampedTemperature(requestBody.temperature),
+      topP: toPositiveFinite(requestBody.top_p),
+      topK: toPositiveFinite(requestBody.top_k),
+    };
+    const protobuf = encodeDevinDesktopRequest(protoPayload);
     const framed = encodeDevinConnectEnvelope(protobuf);
-    log?.info?.("DEVIN", `Devin Desktop → ${model} (${converted.prompts.length} messages)`);
+    log?.info?.(
+      "DEVIN",
+      `Devin Desktop → ${model} (${converted.prompts.length} messages, max_tokens=${protoPayload.maxTokens ?? DEVIN_DESKTOP_DEFAULT_MAX_TOKENS})`
+    );
 
     let upstream: Response;
     try {
@@ -754,11 +1057,16 @@ export class DevinDesktopExecutor extends BaseExecutor {
             choices: [{ index: 0, delta, finish_reason: reason }],
           });
         };
-        const emitError = (message: string) => {
+        const emitError = (
+          message: string,
+          status = 502,
+          code = "upstream_error",
+          type = "devin_desktop_error"
+        ) => {
           emit(
-            buildErrorBody(502, message, undefined, {
-              type: "devin_desktop_error",
-              code: "upstream_error",
+            buildErrorBody(status, message, undefined, {
+              type,
+              code,
             })
           );
           controller.enqueue(TEXT_ENCODER.encode("data: [DONE]\n\n"));
@@ -768,6 +1076,7 @@ export class DevinDesktopExecutor extends BaseExecutor {
         let roleEmitted = false;
         let stopReason = 0;
         const toolCallIndexes = new Map<string, number>();
+        let lastToolCallIndex: number | null = null;
         let usage: DevinUsage | null = null;
         let trailerError: ConnectTrailerError | null = null;
         let sawEndStream = false;
@@ -800,10 +1109,22 @@ export class DevinDesktopExecutor extends BaseExecutor {
             if (response.thinking) emitChunk({ reasoning_content: response.thinking });
             if (response.text) emitChunk({ content: response.text });
             for (const toolCall of response.toolCalls) {
-              const existingIndex = toolCallIndexes.get(toolCall.id);
-              const index = existingIndex ?? toolCallIndexes.size;
+              // Argument-only deltas arrive as separate proto messages with no
+              // id/name — they continue the most recently started tool call.
+              // Known limitation: the wire format carries no per-call index on
+              // argument deltas, so if upstream ever interleaves argument
+              // deltas from two parallel tool calls there is no way to
+              // attribute them correctly. Observed Devin Desktop streams emit
+              // each call's deltas contiguously (id+name first, then argument
+              // fragments), so the most-recent-call heuristic is correct.
+              const existingIndex = toolCall.id
+                ? toolCallIndexes.get(toolCall.id)
+                : (lastToolCallIndex ?? undefined);
+              const index = existingIndex ?? (toolCall.id ? toolCallIndexes.size : -1);
+              if (index < 0) continue;
               const firstDelta = existingIndex === undefined;
-              if (firstDelta) toolCallIndexes.set(toolCall.id, index);
+              if (toolCall.id) toolCallIndexes.set(toolCall.id, index);
+              lastToolCallIndex = index;
               const functionDelta: Record<string, string> = {};
               if (toolCall.name) functionDelta.name = toolCall.name;
               if (toolCall.arguments) functionDelta.arguments = toolCall.arguments;
@@ -862,8 +1183,15 @@ export class DevinDesktopExecutor extends BaseExecutor {
           if (pending.length !== 0) throw new Error("Truncated Devin Desktop Connect frame");
           if (!sawEndStream) throw new Error("Devin Desktop Connect stream ended without trailers");
           if (trailerError) {
-            const detail = sanitizeErrorMessage(`${trailerError.code}: ${trailerError.message}`);
-            emitError(`Devin Desktop stream error: ${detail}`);
+            const rawMessage = `${trailerError.code}: ${trailerError.message}`;
+            const classified = classifyDevinDesktopError(rawMessage);
+            const detail = sanitizeErrorMessage(rawMessage);
+            emitError(
+              `Devin Desktop stream error: ${detail}`,
+              classified.status,
+              classified.code,
+              classified.type
+            );
             return;
           }
 

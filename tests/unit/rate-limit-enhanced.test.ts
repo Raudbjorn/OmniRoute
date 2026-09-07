@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+const rateLimiter = await import("../../src/shared/utils/rateLimiter.ts");
+
 const {
   checkFallbackError,
   parseRetryAfterFromBody,
@@ -278,6 +280,35 @@ test("formatRetryAfter: formats correctly", () => {
   const future = new Date(Date.now() + 150000).toISOString(); // 2.5 min
   const formatted = formatRetryAfter(future);
   assert.match(formatted, /reset after \d+m/);
+});
+
+test.beforeEach(() => {
+  rateLimiter.__resetRedisLoggingStateForTests();
+});
+
+test("rate limiter formats empty Redis errors with a fallback message", () => {
+  assert.equal(rateLimiter.__formatRedisErrorForTests({}), "Unknown Redis error");
+  assert.equal(rateLimiter.__formatRedisErrorForTests(""), "Unknown Redis error");
+  assert.equal(
+    rateLimiter.__formatRedisErrorForTests(new Error("connect ECONNREFUSED 127.0.0.1:6379")),
+    "Error: connect ECONNREFUSED 127.0.0.1:6379"
+  );
+});
+
+test("rate limiter suppresses duplicate Redis error logs within the throttle window", () => {
+  assert.equal(
+    rateLimiter.__shouldLogRedisErrorForTests("Error: connect ECONNREFUSED", 1_000),
+    true
+  );
+  assert.equal(
+    rateLimiter.__shouldLogRedisErrorForTests("Error: connect ECONNREFUSED", 5_000),
+    false
+  );
+  assert.equal(
+    rateLimiter.__shouldLogRedisErrorForTests("Error: connect ECONNREFUSED", 32_000),
+    true
+  );
+  assert.equal(rateLimiter.__shouldLogRedisErrorForTests("Error: read ETIMEDOUT", 33_000), true);
 });
 
 test("filterAvailableAccounts: filters out rate-limited", () => {

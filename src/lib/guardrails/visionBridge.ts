@@ -114,7 +114,7 @@ export async function getComboVisionBridgeDecision(
     if (!hasModelStep) return "not-combo";
     // Every model step is proven vision-capable — safe to skip
     if (hasVisionCapableStep && !hasNonVisionStep) return "skip";
-    // Mixed combo: some targets lack vision — describe so the combo still answers
+    // Mixed combo: some targets lack vision — describe so the combo still answers.
     if (hasVisionCapableStep) return "process";
     // Combo exists but NO target can handle images: equivalent to a text-only
     // model, so the whole request may be rerouted to a vision-capable model.

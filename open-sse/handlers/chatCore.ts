@@ -2180,10 +2180,13 @@ export async function handleChatCore({
   );
   if (outputBudget.ok === false) {
     const exceededInputCap = outputBudget.maxInputTokens !== undefined;
-    const message =
-      `Input exceeds ${exceededInputCap ? "maximum input tokens" : "context window"} for ${provider}/${effectiveModel}: ` +
-      `estimated ${outputBudget.estimatedInputTokens} input tokens, ${exceededInputCap ? `max input ${outputBudget.maxInputTokens}` : `limit ${outputBudget.contextLimit}`}. ` +
-      `Reduce the prompt or route to a model with a larger ${exceededInputCap ? "input limit" : "context window"}.`;
+    const limitTokens = exceededInputCap ? outputBudget.maxInputTokens : outputBudget.contextLimit;
+    const isClaudeClient = sourceFormat === FORMATS.CLAUDE;
+    const message = isClaudeClient
+      ? `Prompt is too long: ${outputBudget.estimatedInputTokens} tokens > ${limitTokens} maximum context length for ${provider}/${effectiveModel}. Reduce the prompt or route to a model with a larger context window.`
+      : `Input exceeds ${exceededInputCap ? "maximum input tokens" : "context window"} for ${provider}/${effectiveModel}: ` +
+        `estimated ${outputBudget.estimatedInputTokens} input tokens, ${exceededInputCap ? `max input ${outputBudget.maxInputTokens}` : `limit ${outputBudget.contextLimit}`}. ` +
+        `Reduce the prompt or route to a model with a larger ${exceededInputCap ? "input limit" : "context window"}.`;
     log?.warn?.("CONTEXT", message);
     trackPendingRequest(model, provider, connectionId, false);
     return createErrorResult(
@@ -5872,7 +5875,18 @@ export async function handleChatCore({
     clientResponseFormat === FORMATS.OPENAI &&
     !isResponsesEndpoint &&
     !isDroidCLI;
-  const streamStateBody = finalBody || body;
+  // Prefer whichever body still carries `tools` — some executor paths consume
+  // or re-key the tools array (e.g. Devin Desktop encodes tools into the
+  // Connect request separately), so the dispatched body can lose the client
+  // tool schemas that response-side sanitizers (arg repair) need.
+  const streamStateBody = (() => {
+    const hasTools = (b: unknown): boolean =>
+      Array.isArray((b as { tools?: unknown[] } | null | undefined)?.tools) &&
+      (b as { tools: unknown[] }).tools.length > 0;
+    if (hasTools(finalBody)) return finalBody;
+    if (hasTools(body)) return body;
+    return finalBody || body;
+  })();
 
   if (needsResponsesTranslation) {
     // Provider returns openai-responses, translate to openai (Chat Completions) that clients expect
