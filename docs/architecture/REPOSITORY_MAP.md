@@ -357,14 +357,12 @@ open-sse/
 | `check-supported-node-runtime.ts`   | Validate current Node version is supported                                 |
 | `check-pr-test-policy.mjs`          | Enforce "tests required" rule on production code changes                   |
 | **`gen-provider-reference.ts`**     | NEW: auto-generate `docs/reference/PROVIDER_REFERENCE.md` from catalog     |
-| `i18n/generate-multilang.mjs`       | Translate UI strings + docs via Google Translate                           |
-| `i18n_autotranslate.py`             | LLM-based doc translation pipeline                                         |
+| `i18n/generate-multilang.mjs`       | Translate UI strings via Google Translate                                  |
 | `validate_translation.py`           | Per-locale translation validation                                          |
 | `check_translations.py`             | Code-side i18n key check                                                   |
 | `run-playwright-tests.mjs`          | Playwright E2E runner                                                      |
 | `run-protocol-clients-tests.mjs`    | MCP/A2A E2E runner                                                         |
 | `run-ecosystem-tests.mjs`           | Ecosystem (provider integration) tests                                     |
-| `test-report-summary.mjs`           | Generate coverage summary markdown                                         |
 | `smoke-electron-packaged.mjs`       | Smoke-test packaged Electron build                                         |
 | `native-binary-compat.mjs`          | Validate native deps (`better-sqlite3`) match Electron's Node              |
 | `validate-pack-artifact.ts`         | Validate npm pack output                                                   |
@@ -393,7 +391,6 @@ open-sse/
 | `ENVIRONMENT.md`            | All env vars (~800 documented, ~3,050 lines `.env.example`)                           |
 | `TROUBLESHOOTING.md`        | Common errors + v3.8.0 known issues                                                   |
 | `RELEASE_CHECKLIST.md`      | Full release flow (skills, husky, conventional commits, deploy)                       |
-| `COVERAGE_PLAN.md`          | Coverage goals and current state                                                      |
 | `FREE_TIERS.md`             | Curated free-tier providers (48+ free + 11 OAuth)                                     |
 | `CLI-TOOLS.md`              | External CLI integrations + Internal OmniRoute CLI                                    |
 | `I18N.md`                   | i18n architecture, adding a language, 42 locales                                      |
@@ -448,8 +445,6 @@ open-sse/
 
 | Subdir                | Purpose                                                                                                                                                                                        |
 | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs/i18n/`          | Localized doc translations (41 locales)                                                                                                                                                        |
-| `docs/screenshots/`   | Image assets for guides                                                                                                                                                                        |
 | `_tasks/superpowers/` | Plans/specs from superpowers (`writing-plans`/`brainstorming`) + research — isolated, separately-versioned repo, gitignored by the main tree. See CLAUDE.md → "Planning & Research Artifacts". |
 
 ---

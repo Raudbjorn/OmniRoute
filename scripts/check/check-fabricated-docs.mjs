@@ -384,9 +384,6 @@ const SKIP_DOC_FILES = new Set([
   "docs/reference/PROVIDER_REFERENCE.md", // auto-generated from providers.ts
   "docs/openapi.yaml",
   "docs/i18n", // translations — separate workflow
-  // Forward-looking coverage plan: a `- [ ]` checklist of test targets and helper
-  // components to be created. Same rationale as the design/plan docs above.
-  "docs/ops/COVERAGE_PLAN.md",
 ]);
 
 // ── File discovery ─────────────────────────────────────────────────────────

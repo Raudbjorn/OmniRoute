@@ -2,10 +2,9 @@
  * OmniRoute — shared glossary terminology normalization.
  *
  * Single implementation of the "canonical term" rules declared in
- * scripts/i18n/glossary/<locale>.json, used by three call sites so they can
+ * scripts/i18n/glossary/<locale>.json, used by two call sites so they can
  * never disagree about what canonical means:
  *
- *   - scripts/i18n/run-translation.mjs        (active docs pipeline)
  *   - scripts/i18n/generate-multilang.mjs     (deprecated legacy generator)
  *   - scripts/i18n/check-glossary-consistency.mjs (drift gate)
  *

@@ -1,124 +1,12 @@
 /**
  * Helpers behind `scripts/i18n/add-locale.mjs`:
- *   - `computeDocsCoreSet` (scripts/i18n/lib/docs-core-set.mjs) — the docs a new
- *     locale must carry to be at parity with every existing locale mirror.
  *   - `addSupportedLang` / `addDropdownOption` (scripts/i18n/lib/site-scaffold.mjs)
  *     — the two text edits made to the marketing site (a separate repo, so the
  *     fixtures below are verbatim copies of its `js/i18n.js` and `index.html`).
  */
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { computeDocsCoreSet, docsLocaleDirs } from "../../scripts/i18n/lib/docs-core-set.mjs";
 import { addDropdownOption, addSupportedLang } from "../../scripts/i18n/lib/site-scaffold.mjs";
-
-type I18nConfig = {
-  default: string;
-  rtl: string[];
-  docsExcluded?: string[];
-  locales: Array<{ code: string; flag?: string; native?: string }>;
-};
-
-// ---------------------------------------------------------------------------
-// computeDocsCoreSet
-// ---------------------------------------------------------------------------
-
-function withTempRoot(fn: (root: string) => void): void {
-  const root = mkdtempSync(path.join(tmpdir(), "i18n-core-set-"));
-  try {
-    fn(root);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-}
-
-function touch(root: string, rel: string, body = "# x\n"): void {
-  const abs = path.join(root, rel);
-  mkdirSync(path.dirname(abs), { recursive: true });
-  writeFileSync(abs, body);
-}
-
-const CONFIG: I18nConfig = {
-  default: "en",
-  rtl: [],
-  docsExcluded: ["en"],
-  locales: [{ code: "aa" }, { code: "bb" }, { code: "cc" }, { code: "en" }],
-};
-
-test("computeDocsCoreSet intersects the locale mirrors and drops excluded / sourceless paths", () => {
-  withTempRoot((root) => {
-    // English sources.
-    for (const rel of [
-      "README.md",
-      "docs/guides/USER_GUIDE.md",
-      "docs/ONLY_IN_AA.md",
-      "llm.txt",
-      "CHANGELOG.md",
-      "docs/guides/I18N.md",
-    ]) {
-      touch(root, rel);
-    }
-    // Two complete-ish locales: everything shared except ONLY_IN_AA.md; both carry
-    // the strict-mirror files, the operator-only guide and a mirror whose English
-    // source no longer exists (GHOST.md).
-    for (const locale of ["aa", "bb"]) {
-      for (const rel of [
-        "README.md",
-        "docs/guides/USER_GUIDE.md",
-        "llm.txt",
-        "CHANGELOG.md",
-        "docs/guides/I18N.md",
-        "docs/GHOST.md",
-      ]) {
-        touch(root, `docs/i18n/${locale}/${rel}`);
-      }
-    }
-    touch(root, "docs/i18n/aa/docs/ONLY_IN_AA.md");
-    // The docsExcluded locale has a (tiny) directory — it must not shrink the set.
-    touch(root, "docs/i18n/en/README.md");
-    // The index file next to the locale directories is not a locale.
-    touch(root, "docs/i18n/README.md");
-    // `cc` is configured but has no mirror directory yet (the locale being added).
-
-    assert.deepEqual(docsLocaleDirs({ root, config: CONFIG }), ["aa", "bb"]);
-    assert.deepEqual(computeDocsCoreSet({ root, config: CONFIG }), [
-      "README.md",
-      "docs/guides/USER_GUIDE.md",
-    ]);
-  });
-});
-
-test("computeDocsCoreSet returns a sorted list and an empty one when no mirror exists", () => {
-  withTempRoot((root) => {
-    assert.deepEqual(computeDocsCoreSet({ root, config: CONFIG }), []);
-    for (const rel of ["docs/z.md", "docs/a.md", "AGENTS.md"]) {
-      touch(root, rel);
-      touch(root, `docs/i18n/aa/${rel}`);
-    }
-    assert.deepEqual(computeDocsCoreSet({ root, config: CONFIG }), [
-      "AGENTS.md",
-      "docs/a.md",
-      "docs/z.md",
-    ]);
-  });
-});
-
-test("computeDocsCoreSet excludes `en` by default when docsExcluded is absent", () => {
-  withTempRoot((root) => {
-    touch(root, "README.md");
-    touch(root, "docs/i18n/aa/README.md");
-    touch(root, "docs/i18n/en/OTHER.md");
-    touch(root, "OTHER.md");
-    const config: I18nConfig = {
-      default: "en",
-      rtl: [],
-      locales: [{ code: "aa" }, { code: "en" }],
-    };
-    assert.deepEqual(computeDocsCoreSet({ root, config }), ["README.md"]);
-  });
-});
 
 // ---------------------------------------------------------------------------
 // addSupportedLang — js/i18n.js (fixture: verbatim lines of the site file)

@@ -1,5 +1,5 @@
 .PHONY: help install dev start build build-release lint typecheck typecheck-strict \
-        test test-unit test-vitest test-coverage test-all test-integration test-e2e \
+        test test-unit test-vitest test-all test-integration test-e2e \
         check check-cycles check-docs env-sync clean
 
 # OmniRoute — convenience wrapper around the npm scripts.
@@ -40,9 +40,6 @@ test-unit: ## Alias for `test`
 
 test-vitest: ## Vitest (MCP server, autoCombo, cache)
 	npm run test:vitest
-
-test-coverage: ## Unit tests + coverage gate (60/60/60/60)
-	npm run test:coverage
 
 test-all: ## All suites (unit + vitest + ecosystem + e2e)
 	npm run test:all

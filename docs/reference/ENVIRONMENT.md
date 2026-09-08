@@ -1311,7 +1311,6 @@ Provider quota endpoints, network tunnels (Tailscale, Ngrok, MITM debug proxy), 
 | `SKIP_ANTIGRAVITY_DNS`                      | _(unset)_                                                                   | `src/mitm/dns/provision.ts`                                               | Set `true` to skip provisioning `/etc/hosts` DNS entries for the Antigravity proxy hostnames entirely — for containers with no sudo/root available.                                                                                                                                                                                                                              |
 | `OMNIROUTE_SKIP_DNS_WRITE`                  | _(unset)_                                                                   | `src/mitm/dns/dnsConfig.ts`                                               | Set `1` to skip writing to the hosts file when adding/removing DNS entries — for sandboxed or read-only test environments.                                                                                                                                                                                                                                                       |
 | `OMNIROUTE_SKIP_SYSTEM_TRUST`               | `0`                                                                         | `src/mitm/cert/install.ts`, `src/mitm/tproxy/caTrust.ts`                  | Test/CI-only guard: set `1` to make cert trust install/uninstall a no-op so the suite never mutates the OS trust store. Set automatically by the test setup and CI workflows.                                                                                                                                                                                          |
-| `CHANGELOG_BASE_REF`                        | _(auto)_                                                                    | `scripts/check/check-changelog-integrity.mjs`                             | Explicit base ref for the anti CHANGELOG-eat gate (defaults to the PR base branch in CI, or the highest `release/v*`).                                                                                                                                                                                                                                                 |
 | `FREE_PROXY_AUTO_SYNC_ENABLED`              | `false`                                                                     | `src/lib/freeProxyProviders/scheduler.ts`                                 | Set `true` to enable the background free-proxy pool auto-sync scheduler. Opt-in, off by default.                                                                                                                                                                                                                                                                      |
 | `FREE_PROXY_AUTO_SYNC_INTERVAL_MS`          | `1800000`                                                                   | `src/lib/freeProxyProviders/scheduler.ts`                                 | Auto-sync interval in milliseconds (default 30 min).                                                                                                                                                                                                                                                                                                                  |
 | `FREE_PROXY_1PROXY_ENABLED`                 | `true`                                                                      | `src/lib/freeProxyProviders/oneproxy.ts`                                  | Enable the 1proxy free proxy source. Set to `false` to disable.                                                                                                                                                                                                                                                                                                       |
@@ -1471,19 +1470,20 @@ value below unset in production deployments.
 | `ELECTRON_SMOKE_COLD_RESTART`          | `0`                              | `scripts/dev/smoke-electron-packaged.mjs` | #7592: relaunch against the same data dir and assert the second launch selects the native SQLite driver.                                                                                                                                   |
 | `CLI_DEVIN_BIN`                        | _(PATH lookup)_                  | `open-sse/executors/devin-cli.ts`         | Override the Devin CLI binary path.                                                                                                                                                                                                        |
 
-### Docs translation pipeline
+### i18n translation backend
 
-Used by `scripts/i18n/run-translation.mjs` (the `npm run i18n:run` command).
+Used by `scripts/i18n/add-locale.mjs`, `scripts/i18n/sync-ui-keys.mjs` and
+`scripts/i18n/lib/translate-backend.mjs` to translate UI/CLI/site strings.
 All five variables are unset by default — set them in `.env` only on machines
-that should be able to run the docs translator.
+that should be able to run the translator.
 
-| Variable                            | Default   | Source File                        | Description                                                               |
-| ----------------------------------- | --------- | ---------------------------------- | ------------------------------------------------------------------------- |
-| `OMNIROUTE_TRANSLATION_API_URL`     | _(unset)_ | `scripts/i18n/run-translation.mjs` | OpenAI-compatible base URL for the translation backend.                   |
-| `OMNIROUTE_TRANSLATION_API_KEY`     | _(unset)_ | `scripts/i18n/run-translation.mjs` | Bearer token for the translation backend (never logged).                  |
-| `OMNIROUTE_TRANSLATION_MODEL`       | _(unset)_ | `scripts/i18n/run-translation.mjs` | Model id, e.g. `gpt-4o-mini` or `cx/gpt-5.4-mini`.                        |
-| `OMNIROUTE_TRANSLATION_TIMEOUT_MS`  | `60000`   | `scripts/i18n/run-translation.mjs` | Per-request timeout in milliseconds.                                      |
-| `OMNIROUTE_TRANSLATION_CONCURRENCY` | `4`       | `scripts/i18n/run-translation.mjs` | Parallel translation requests when running over multiple files / locales. |
+| Variable                            | Default   | Source File                            | Description                                                               |
+| ----------------------------------- | --------- | --------------------------------------- | ------------------------------------------------------------------------- |
+| `OMNIROUTE_TRANSLATION_API_URL`     | _(unset)_ | `scripts/i18n/lib/translate-backend.mjs` | OpenAI-compatible base URL for the translation backend.                   |
+| `OMNIROUTE_TRANSLATION_API_KEY`     | _(unset)_ | `scripts/i18n/lib/translate-backend.mjs` | Bearer token for the translation backend (never logged).                  |
+| `OMNIROUTE_TRANSLATION_MODEL`       | _(unset)_ | `scripts/i18n/lib/translate-backend.mjs` | Model id, e.g. `gpt-4o-mini` or `cx/gpt-5.4-mini`.                        |
+| `OMNIROUTE_TRANSLATION_TIMEOUT_MS`  | `60000`   | `scripts/i18n/lib/translate-backend.mjs` | Per-request timeout in milliseconds.                                      |
+| `OMNIROUTE_TRANSLATION_CONCURRENCY` | `4`       | `scripts/i18n/sync-ui-keys.mjs`          | Parallel translation requests when running over multiple files / locales. |
 
 ---
 

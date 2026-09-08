@@ -25,8 +25,7 @@ the request, and that permission must be linked from the entry.
 2. **"Removed" means every surface OmniRoute controls.** Executor, registry entry, provider
    id and alias, model list, endpoints, environment variables, icon, dashboard cards, the
    generated provider reference, `FREE_TIERS.md`, the environment reference, README counts,
-   `llm.txt` mirrors, dedicated tests and golden snapshots, code comments, CHANGELOG bullets
-   (with a ledgered reconciliation, see `config/release/changelog-reconciliations.json`),
+   `llm.txt` mirrors, dedicated tests and golden snapshots, code comments, CHANGELOG bullets,
    GitHub Releases notes, the wiki, and the GitHub issues, discussions and pull requests whose
    subject was that provider (issues and discussions deleted; pull requests retitled, their
    description replaced and the thread locked, because GitHub cannot delete pull requests).
