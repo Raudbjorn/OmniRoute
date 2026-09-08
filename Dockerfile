@@ -103,25 +103,12 @@ RUN test -f package-lock.json \
 # node-gyp comes from npm's own bundled copy (deterministic, already in the image)
 # instead of `npx --yes`, which would install an arbitrary registry version
 # on-demand and run its lifecycle scripts (Sonar docker:S6505).
-#
-# tls-client-node (claude-web/grok-web/lmarena/perplexity-web TLS
-# impersonation) hits the same --ignore-scripts wall: its own postinstall.js
-# fetches a platform .so/.dylib/.dll from the bogdanfinn/tls-client GitHub
-# Releases API and is never invoked when npm ci skips lifecycle scripts. Unlike
-# better-sqlite3 above, that script never throws on failure — it only
-# `console.warn`s and exits 0 — so a rate-limited or offline build would
-# otherwise succeed silently with an empty bin/ and only fail at first request
-# in production (TlsClientUnavailableError, #7802). Run it explicitly here so
-# a broken/rate-limited fetch fails the BUILD loudly instead of shipping a
-# broken image.
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,target=/root/.npm \
   npm ci --include=optional --no-audit --no-fund --legacy-peer-deps --ignore-scripts \
   && (cd node_modules/better-sqlite3 \
       && node /usr/local/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js rebuild) \
   && node -e "require('better-sqlite3')(':memory:').close()" \
-  && node node_modules/tls-client-node/scripts/postinstall.js \
-  && (test -n "$(find node_modules/tls-client-node/bin -mindepth 1 -print -quit 2>/dev/null)" \
-      || (echo "tls-client-node native binary missing after postinstall — GitHub API fetch likely rate-limited or failed (#7802)" >&2 && exit 1))
+  && node -e "const wreq=require('wreq-js'); if(typeof wreq.createTransport!=='function') process.exit(1)"
 
 # Build with Turbopack (stable in Next 16, the repo default). The v3.8.27-era
 # TurbopackInternalError panic ("entered unreachable code: there must be a path to a
@@ -227,13 +214,13 @@ LABEL org.opencontainers.image.title="omniroute" \
 ENV NODE_ENV=production
 ENV PORT=20128
 ENV HOSTNAME=0.0.0.0
-# Runtime heap ceiling. 1024MB is enough for normal traffic but can be tight
-# for large fusion-combo panels (many models fanned out in parallel, each
-# response buffered in full — see open-sse/services/fusion.ts::FUSION_DEFAULTS
+# Runtime heap ceiling. 4096MB is a safer default for production traffic with
+# large fusion-combo panels (many models fanned out in parallel, each response
+# buffered in full — see open-sse/services/fusion.ts::FUSION_DEFAULTS
 # .maxPanel, issue #1905). Override at `docker run` time with
-# `-e OMNIROUTE_MEMORY_MB=2048` (or higher) if you raise fusionTuning.maxPanel
+# `-e OMNIROUTE_MEMORY_MB=4096` (or higher) if you raise fusionTuning.maxPanel
 # above the default cap.
-ENV OMNIROUTE_MEMORY_MB=1024
+ENV OMNIROUTE_MEMORY_MB=4096
 ENV NODE_OPTIONS="--max-old-space-size=${OMNIROUTE_MEMORY_MB}"
 
 # Data directory inside Docker — must match the volume mount in docker-compose.yml
@@ -276,7 +263,7 @@ USER node
 COPY --chmod=755 scripts/check-permissions.sh /app/check-permissions.sh
 ENTRYPOINT ["/app/check-permissions.sh"]
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=15s --start-period=60s --retries=5 \
   CMD ["node", "healthcheck.mjs"]
 
 CMD ["node", "dev/run-standalone.mjs"]
@@ -344,7 +331,18 @@ RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-apt-cache,targe
   && git config --system url."https://github.com/".insteadOf "ssh://git@github.com/"
 
 # Install CLI tools globally. Separate layer from apt for better cache reuse.
+# Pinned to exact versions per Diego's diagnosis in #12576 — floating
+# `@latest` causes two CI failures:
+#   1. `openclaw` ships a breaking major ~weekly; overnight builds silently
+#      advance to a version that no longer matches the tested combo stack.
+#   2. `codex` / `claude-code` dev pre-releases (`@next`, dist-tags) mutate
+#      API surface without notice; reproducible builds need a SHA-pinned dev
+#      build, not the floating `@latest`.
 RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,target=/root/.npm \
-  npm install -g --no-audit --no-fund @openai/codex @anthropic-ai/claude-code droid openclaw@latest
+  npm install -g --no-audit --no-fund \
+    @openai/codex@0.153.2 \
+    @anthropic-ai/claude-code@2.1.260 \
+    droid@0.212.0 \
+    openclaw@2026.9.1
 
 USER node

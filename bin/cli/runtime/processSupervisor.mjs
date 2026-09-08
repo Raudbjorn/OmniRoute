@@ -1,21 +1,45 @@
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
-import { writePidFile, cleanupPidFile, killAllSubprocesses, isPidRunning } from "../utils/pid.mjs";
+import { fileURLToPath } from "node:url";
+import { buildNodeRuntimeArgs } from "../../../scripts/build/runtime-env.mjs";
 import {
-  RESTART_RESET_MS,
-  DEFAULT_MAX_RESTARTS,
-  shouldExitInsteadOfRestart,
+  formatAndroidInstrumentationFailureHint,
+  isFatalInstrumentationHookFailure,
+} from "../utils/ensureAndroidCacheDir.mjs";
+import {
+  cleanupPidFile,
+  isPidRunning,
+  killAllSubprocesses,
+  stopProcessGracefully,
+  writePidFile,
+} from "../utils/pid.mjs";
+import {
   computeRestartDelayMs,
+  DEFAULT_MAX_RESTARTS,
+  RESTART_RESET_MS,
+  shouldExitInsteadOfRestart,
   waitUntilPortFree,
 } from "./supervisorPolicy.mjs";
-import { buildNodeRuntimeArgs } from "../../../scripts/build/runtime-env.mjs";
-import { stopProcessGracefully } from "../../../src/shared/platform/windowsProcess.ts";
-import {
-  isFatalInstrumentationHookFailure,
-  formatAndroidInstrumentationFailureHint,
-} from "../utils/ensureAndroidCacheDir.mjs";
 
 const CRASH_LOG_LINES = 50;
+
+const PACKAGE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+// Bun needs the Node-compat polyfill preloaded (#9761). The file ships at the
+// package root via package.json "files" (see scripts/build/pack-artifact-policy.ts)
+// and is never copied into dist/, so the path must resolve against the package
+// root — resolving it next to the server bundle fails with "preload not found" (#11980).
+export const BUN_PRELOAD_PATH = join(PACKAGE_ROOT, "open-sse", "utils", "setupPolyfill.ts");
+
+/**
+ * Argument vector for the server child. Kept pure so tests can assert on it
+ * directly: the bare `import { spawn }` above cannot be intercepted without
+ * --experimental-test-module-mocks (same seam as #8131).
+ */
+export function buildServerSpawnArgs(serverPath, memoryLimit, env = process.env) {
+  return process.versions.bun
+    ? ["--preload", BUN_PRELOAD_PATH, serverPath]
+    : buildNodeRuntimeArgs(env, memoryLimit, serverPath);
+}
 
 export class ServerSupervisor {
   constructor({
@@ -44,32 +68,12 @@ export class ServerSupervisor {
     this.instrumentationFailureHintPrinted = false;
 
     const showLog = process.env.OMNIROUTE_SHOW_LOG === "1";
-    // #6321: stdout used to be discarded (`"ignore"`) whenever `--log`/OMNIROUTE_SHOW_LOG
-    // wasn't set (the default) — any debug/pino output written to stdout vanished
-    // silently, so a boot that never becomes ready looked like a dead hang with zero
-    // output even at APP_LOG_LEVEL=debug. Pipe stdout too and buffer it alongside
-    // stderr so a readiness timeout can surface what the child actually printed.
-    // #9156: always spawn via process.execPath (absolute path to the running
-    // runtime — node or bun). Bare "node" is unresolvable under macOS launchd's
-    // minimal PATH; #9761's Bun ternary accidentally regressed the Node branch.
-    // Node args come from buildNodeRuntimeArgs (#9209 IPv4-first DNS + #5238
-    // heap flag handling); the Bun branch keeps #9761's polyfill preload —
-    // Bun does not accept the Node-only flags.
-    this.child = spawn(
-      process.execPath,
-      process.versions.bun
-        ? [
-            "--preload",
-            join(dirname(this.serverPath), "open-sse/utils/setupPolyfill.ts"),
-            this.serverPath,
-          ]
-        : buildNodeRuntimeArgs(process.env, this.memoryLimit, this.serverPath),
-      {
-        cwd: dirname(this.serverPath),
-        env: this.env,
-        stdio: showLog ? "inherit" : ["ignore", "pipe", "pipe"],
-      }
-    );
+
+    this.child = spawn(process.execPath, buildServerSpawnArgs(this.serverPath, this.memoryLimit), {
+      cwd: dirname(this.serverPath),
+      env: this.env,
+      stdio: showLog ? "inherit" : ["ignore", "pipe", "pipe"],
+    });
 
     writePidFile("server", this.child.pid);
 
@@ -188,12 +192,7 @@ export class ServerSupervisor {
   stop() {
     this.isShuttingDown = true;
     if (this.child?.pid) {
-      // #8045: on win32, process.kill(pid, "SIGTERM") unconditionally force-terminates
-      // the target — it is never a real, interceptable signal there. The child already
-      // receives the real CTRL_C_EVENT/CTRL_CLOSE_EVENT independently (it shares the
-      // console) and runs its own async graceful shutdown (WAL checkpoint). Sending
-      // SIGTERM immediately on win32 races and beats that cleanup. Fire-and-forget:
-      // stop() itself stays sync so callers keep their existing control flow.
+      // Allow the server to finish its graceful shutdown before escalation.
       void stopProcessGracefully({ pid: this.child.pid, timeoutMs: 5000, isPidRunning });
     }
     killAllSubprocesses();

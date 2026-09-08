@@ -1,19 +1,5 @@
-import { CURSOR_CONFIG } from "../constants/oauth";
 import { getCursorUserAgent } from "@omniroute/open-sse/config/providerHeaderProfiles.ts";
-
-/**
- * Cursor IDE OAuth Service
- * Supports Import Token method from Cursor IDE's local SQLite database
- *
- * Token Location:
- * - Linux: ~/.config/Cursor/User/globalStorage/state.vscdb
- * - macOS: /Users/<user>/Library/Application Support/Cursor/User/globalStorage/state.vscdb
- * - Windows: %APPDATA%\Cursor\User\globalStorage\state.vscdb
- *
- * Database Keys:
- * - cursorAuth/accessToken: The access token
- * - storage.serviceMachineId: Machine ID for checksum
- */
+import { CURSOR_CONFIG } from "../constants/oauth";
 
 export class CursorService {
   config: any;
@@ -70,8 +56,7 @@ export class CursorService {
   detectOS() {
     if (typeof process !== "undefined") {
       const platform = process.platform;
-      if (platform === "win32") return "windows";
-      if (platform === "darwin") return "macos";
+
       return "linux";
     }
     return "linux";

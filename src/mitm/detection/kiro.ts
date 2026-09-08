@@ -8,19 +8,7 @@ import path from "node:path";
 import type { DetectionResult } from "../types";
 
 const HOME = os.homedir();
-const PATHS = [
-  "/Applications/Kiro.app",
-  path.join(HOME, "Applications", "Kiro.app"),
-  "/usr/bin/kiro",
-  "/usr/local/bin/kiro",
-  path.join(HOME, ".local", "bin", "kiro"),
-  path.join(
-    process.env.LOCALAPPDATA ?? path.join(HOME, "AppData", "Local"),
-    "Programs",
-    "Kiro",
-    "Kiro.exe"
-  ),
-];
+const PATHS = ["/usr/bin/kiro", "/usr/local/bin/kiro", path.join(HOME, ".local", "bin", "kiro")];
 
 export function detectKiro(): DetectionResult {
   for (const p of PATHS) {

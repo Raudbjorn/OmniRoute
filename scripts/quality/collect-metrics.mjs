@@ -5,12 +5,11 @@
 // Fase 6A.11: openapiCoverage.pct + i18nUiCoverage.pct (mínimo entre locales).
 // Task 7.9: coverage.<modulo>.lines para ~8 módulos críticos, lidos do
 //   coverage/coverage-summary.json se existir (sem erro se ausente).
-import fs from "node:fs";
-import { promises as fsAsync } from "node:fs";
+import * as yaml from "js-yaml";
+import { execFileSync } from "node:child_process";
+import fs, { promises as fsAsync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { execFileSync } from "node:child_process";
-import * as yaml from "js-yaml";
 
 const cwd = process.cwd();
 const out = {};
@@ -35,22 +34,16 @@ function eslintCounts() {
     results = JSON.parse(fs.readFileSync(cached, "utf8"));
   } else {
     let stdout;
-    const eslintBin = path.join(
-      cwd,
-      "node_modules",
-      ".bin",
-      process.platform === "win32" ? "eslint.cmd" : "eslint"
-    );
+    const eslintBin = path.join(cwd, "node_modules", ".bin", "eslint");
     const args = [".", "--format", "json", "--cache", "--cache-location", ".eslintcache"];
     if (fs.existsSync(path.join(cwd, "config/quality/eslint-suppressions.json"))) {
       args.push("--suppressions-location", "config/quality/eslint-suppressions.json");
     }
     try {
-      // Prefer local bin (Windows-safe .cmd); shell only when needed for the shim.
       stdout = execFileSync(eslintBin, args, {
         encoding: "utf8",
         maxBuffer: 256 * 1024 * 1024,
-        shell: process.platform === "win32",
+        shell: false,
       });
     } catch (e) {
       // eslint sai com código != 0 quando há errors; o JSON ainda vem no stdout

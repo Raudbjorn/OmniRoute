@@ -1,31 +1,10 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { pathToFileURL } from "node:url";
 import { join } from "node:path";
-import { platform } from "node:os";
+import { describe, it } from "node:test";
+import { pathToFileURL } from "node:url";
 
 describe("bin/omniroute.mjs MCP path handling", () => {
-  it("pathToFileURL converts Windows paths to valid file:// URLs", () => {
-    if (platform() !== "win32") {
-      // Skip on non-Windows platforms
-      return;
-    }
-
-    const testPath = "C:\\Users\\test\\projects\\OmniRoute\\bin\\mcp-server.mjs";
-    const fileUrl = pathToFileURL(testPath);
-
-    assert.ok(fileUrl.href.startsWith("file:///"), "URL should start with file:///");
-    assert.ok(fileUrl.href.includes("C:/"), "Windows drive letter should be converted");
-    assert.ok(!fileUrl.href.includes("\\"), "Backslashes should be converted to forward slashes");
-    assert.ok(fileUrl.href.endsWith("mcp-server.mjs"), "Filename should be preserved");
-  });
-
   it("pathToFileURL converts Unix paths to valid file:// URLs", () => {
-    if (platform() === "win32") {
-      // Skip on Windows
-      return;
-    }
-
     const testPath = "/home/user/projects/OmniRoute/bin/mcp-server.mjs";
     const fileUrl = pathToFileURL(testPath);
 

@@ -6,9 +6,9 @@
  * Override the DB path with the CURSOR_STATE_DB_PATH env var for non-standard installs.
  */
 
+import { createRequire } from "module";
 import { homedir } from "os";
 import { join } from "path";
-import { createRequire } from "module";
 
 const CACHE_TTL_MS = 60 * 60 * 1000;
 const DB_KEY = "cursorupdate.lastUpdatedAndShown.version";
@@ -27,14 +27,9 @@ export function getCursorDbPath(): string {
   if (process.env.CURSOR_STATE_DB_PATH) {
     return process.env.CURSOR_STATE_DB_PATH;
   }
-  const home = process.env.HOME || process.env.USERPROFILE || homedir();
+  const home = process.env.HOME || homedir();
   const platform = process.platform;
-  if (platform === "darwin") {
-    return join(home, "Library/Application Support/Cursor/User/globalStorage/state.vscdb");
-  }
-  if (platform === "win32") {
-    return join(process.env.APPDATA || home, "Cursor/User/globalStorage/state.vscdb");
-  }
+
   return join(home, ".config/Cursor/User/globalStorage/state.vscdb");
 }
 
@@ -50,8 +45,7 @@ export function getCursorVersion(): string {
     const db = new Database(getCursorDbPath(), { readonly: true, fileMustExist: true });
     try {
       const row = db.prepare("SELECT value FROM itemTable WHERE key = ?").get(DB_KEY) as
-        | { value: string }
-        | undefined;
+        { value: string } | undefined;
       if (row?.value) {
         cachedVersion = row.value;
         cachedAt = now;

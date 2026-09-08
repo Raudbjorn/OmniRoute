@@ -45,7 +45,7 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
         name: "Claude Fable",
         alias: "fable",
         envKey: "ANTHROPIC_DEFAULT_FABLE_MODEL",
-        defaultValue: _cc.fable ? `cc/${_cc.fable}` : "cc/claude-fable-5",
+        defaultValue: _cc.fable ? `cc/${_cc.fable}` : "cc/claude-fable-5-1",
         isTopLevel: true,
       },
       {
@@ -245,6 +245,9 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
       "gemini-3.7-flash-high",
       "gemini-3.7-flash-medium",
       "gemini-3.7-flash-low",
+      "gemini-3.8-flash-high",
+      "gemini-3.8-flash-medium",
+      "gemini-3.8-flash-low",
       "claude-opus-4-6-thinking",
       "claude-sonnet-4-6",
       "gemini-pro-agent",
@@ -255,6 +258,9 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
       createCliModel("gemini-3.7-flash-high", "Gemini 3.7 Flash High"),
       createCliModel("gemini-3.7-flash-medium", "Gemini 3.7 Flash Medium"),
       createCliModel("gemini-3.7-flash-low", "Gemini 3.7 Flash Low"),
+      createCliModel("gemini-3.8-flash-high", "Gemini 3.8 Flash High"),
+      createCliModel("gemini-3.8-flash-medium", "Gemini 3.8 Flash Medium"),
+      createCliModel("gemini-3.8-flash-low", "Gemini 3.8 Flash Low"),
       createCliModel("gemini-pro-agent", "Gemini 3.1 Pro High"),
       createCliModel("gemini-3.1-pro-low", "Gemini 3.1 Pro Low"),
       createCliModel("claude-sonnet-4-6", "Claude Sonnet 4.6"),
@@ -297,7 +303,7 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
     notes: [
       {
         type: "warning",
-        text: "Config paths: ~/.config/opencode/opencode.jsonc (preferred when present) or opencode.json on all platforms (Windows: %USERPROFILE%\\\\.config\\\\opencode\\\\opencode.jsonc or opencode.json)",
+        text: "Config paths: ~/.config/opencode/opencode.jsonc (preferred when present) or opencode.json",
       },
       {
         type: "warning",
@@ -788,7 +794,7 @@ OPENAI_API_KEY: "{{apiKey}}"`,
       },
       {
         type: "warning",
-        text: "Config path: Linux/macOS ~/.omp/agent/models.yml • Windows %USERPROFILE%\\.omp\\.omp\\agent\\models.yml",
+        text: "Config path: ~/.omp/agent/models.yml",
       },
     ],
   },

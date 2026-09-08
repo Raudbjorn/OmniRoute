@@ -9,6 +9,9 @@ import {
   GITHUB_COPILOT_CHAT_USER_AGENT,
   GITHUB_COPILOT_EDITOR_VERSION,
 } from "@omniroute/open-sse/config/providerHeaderProfiles.ts";
+// userAgent / editorVersion on GITHUB_CONFIG are captured-pin snapshots for
+// lockstep tests. Request construction must call getGitHubCopilotChatUserAgent()
+// (#12417) — see providers/github.ts and providers/ghe-copilot.ts.
 import {
   GROK_BUILD_DEVICE_CODE_URL,
   GROK_BUILD_OAUTH_ISSUER,
@@ -389,8 +392,6 @@ export const CURSOR_CONFIG = {
   // Token storage locations (for user reference)
   tokenStoragePaths: {
     linux: "~/.config/Cursor/User/globalStorage/state.vscdb",
-    macos: "/Users/<user>/Library/Application Support/Cursor/User/globalStorage/state.vscdb",
-    windows: "%APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb",
   },
   // Database keys
   dbKeys: {
@@ -413,8 +414,6 @@ export const TRAE_CONFIG = {
   clientType: "ide",
   tokenStoragePaths: {
     linux: "~/.config/Trae/User/globalStorage/state.vscdb",
-    macos: "/Users/<user>/Library/Application Support/Trae/User/globalStorage/state.vscdb",
-    windows: "%APPDATA%\\Trae\\User\\globalStorage\\state.vscdb",
   },
   // Chat completions path (mirrored from OpenAI-compatible providers)
   chatEndpoint: "/v1/chat/completions",

@@ -97,6 +97,13 @@ let initialized = false;
 
 let currentRequestQueueSettings: RequestQueueSettings = DEFAULT_RESILIENCE_SETTINGS.requestQueue;
 export const ZAI_WEB_REQUEST_QUEUE_MAX_WAIT_MS = 60_000;
+// MaxAI proxies reasoning models (deepseek-r1, gpt-5.6-thinking, grok-4.5,
+// gemini-3.1-pro-preview, grok-4-1-fast-reasoning) whose single upstream turn
+// legitimately runs tens of seconds to minutes. The 15s default execution
+// expiration (Bottleneck `expiration`, applied AFTER dispatch) kills those mid
+// think and surfaces a spurious local 504. Floor MaxAI at 5 min — the same
+// ceiling waitForCooldown.budgetMs uses — so slow reasoning turns complete.
+export const MAXAI_REQUEST_QUEUE_MAX_WAIT_MS = 300_000;
 
 const limiterEffectiveSettings = new WeakMap<Bottleneck, Bottleneck.ConstructorOptions>();
 const preservedReplacementSettings = new Map<string, Bottleneck.ConstructorOptions>();
@@ -161,15 +168,34 @@ function resolveMaxConcurrent(override: number | undefined | null): number {
   return resolveOverride(override, EFFECTIVELY_INFINITE_CONCURRENCY);
 }
 
+export const LONG_CONTEXT_REQUEST_QUEUE_MAX_WAIT_MS = 120_000;
+const LONG_CONTEXT_PROVIDERS = new Set([
+  "opencode-go",
+  "opencode",
+  "devin-desktop",
+  "windsurf",
+  "postman-agent",
+]);
+
 export function resolveRequestQueueMaxWaitMs(
   provider: string,
   configuredMaxWaitMs: number = currentRequestQueueSettings.maxWaitMs,
   connectionId?: string
 ): number {
+  const norm = typeof provider === "string" ? provider.trim().toLowerCase() : "";
+  let providerFloor = 0;
+  if (norm === "zai-web") {
+    providerFloor = ZAI_WEB_REQUEST_QUEUE_MAX_WAIT_MS;
+  } else if (norm === "maxai" || norm === "mx") {
+    // MaxAI's slow reasoning models legitimately need up to ~5 min; floor the
+    // per-request execution budget so they aren't cut off early.
+    providerFloor = MAXAI_REQUEST_QUEUE_MAX_WAIT_MS;
+  } else if (LONG_CONTEXT_PROVIDERS.has(norm)) {
+    providerFloor = LONG_CONTEXT_REQUEST_QUEUE_MAX_WAIT_MS;
+  }
+
   const legacyDefault =
-    provider.trim().toLowerCase() === "zai-web"
-      ? Math.max(configuredMaxWaitMs, ZAI_WEB_REQUEST_QUEUE_MAX_WAIT_MS)
-      : configuredMaxWaitMs;
+    providerFloor > 0 ? Math.max(configuredMaxWaitMs, providerFloor) : configuredMaxWaitMs;
   const override = connectionId
     ? connectionRateLimitOverrides.get(connectionId)?.maxWaitMs
     : undefined;

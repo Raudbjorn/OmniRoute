@@ -52,12 +52,30 @@ export const GEMINI_3_7_FLASH_PROMO_PRICING = {
   cache_creation: 0.75,
 };
 
+// Gemini 3.8 Flash introductory pricing through 2026-12-31. Same launch promo
+// as 3.7 ($0.75 input / $3.75 output); standard pricing reverts on 2027-01-01.
+export const GEMINI_3_8_FLASH_PROMO_PRICING = {
+  input: 0.75,
+  output: 3.75,
+  cached: 0.075,
+  reasoning: 3.75,
+  cache_creation: 0.75,
+};
+
 export const CLAUDE_FABLE_5_PRICING = {
   input: 15.0,
   output: 75.0,
   cached: 7.5,
   reasoning: 112.5,
   cache_creation: 15.0,
+};
+
+export const CLAUDE_FABLE_5_1_PRICING = {
+  input: 10.0,
+  output: 50.0,
+  cached: 0.25,
+  reasoning: 50.0,
+  cache_creation: 12.5,
 };
 
 export const CLAUDE_OPUS_5_PRICING = {

@@ -19,8 +19,8 @@
  * because every probe path is short-circuited before it tries `sudo -n true`
  * (Windows / root / no-sudo-on-PATH).
  */
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 import {
   canRunSudoWithoutPassword,
   isSudoAvailable,
@@ -31,40 +31,9 @@ test("isSudoAvailable returns a boolean on the current platform", () => {
   const result = isSudoAvailable();
   assert.equal(typeof result, "boolean");
   // Windows reports true unconditionally (no sudo concept).
-  if (process.platform === "win32") {
-    assert.equal(result, true);
-  }
-});
-
-test("canRunSudoWithoutPassword short-circuits to true on Windows and root", () => {
-  const result = canRunSudoWithoutPassword();
-  assert.equal(typeof result, "boolean");
-
-  if (process.platform === "win32") {
-    assert.equal(result, true, "Windows uses UAC, never needs sudo password");
-    return;
-  }
-
-  // Linux/macOS: root user always passes without a password.
-  const isRootUser = !!(process.getuid && process.getuid() === 0);
-  if (isRootUser) {
-    assert.equal(result, true, "root user never needs sudo password");
-  }
-});
-
-test("isSudoPasswordRequired returns false on Windows", () => {
-  if (process.platform !== "win32") {
-    // Can't simulate Windows from a non-Windows test runner; assert the
-    // contract holds on the native platform.
-    const result = isSudoPasswordRequired();
-    assert.equal(typeof result, "boolean");
-    return;
-  }
-  assert.equal(isSudoPasswordRequired(), false);
 });
 
 test("isSudoPasswordRequired returns false when running as root on POSIX", () => {
-  if (process.platform === "win32") return;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   if (!isRootUser) {
     // Skip — we can't elevate from the test runner. This branch is covered
@@ -77,7 +46,6 @@ test("isSudoPasswordRequired returns false when running as root on POSIX", () =>
 });
 
 test("isSudoPasswordRequired is consistent with canRunSudoWithoutPassword on POSIX", () => {
-  if (process.platform === "win32") return;
   if (!isSudoAvailable()) {
     // No sudo binary → never required.
     assert.equal(isSudoPasswordRequired(), false);

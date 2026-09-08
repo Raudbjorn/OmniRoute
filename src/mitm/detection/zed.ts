@@ -9,8 +9,6 @@ import type { DetectionResult } from "../types";
 
 const HOME = os.homedir();
 const PATHS = [
-  "/Applications/Zed.app",
-  path.join(HOME, "Applications", "Zed.app"),
   "/usr/bin/zed",
   "/usr/local/bin/zed",
   path.join(HOME, ".local", "bin", "zed"),

@@ -1,54 +1,10 @@
 #!/usr/bin/env node
 
-/**
- * assembleStandalone.mjs - Shared standalone bundle assembler for OmniRoute.
- *
- * Task 0.1 Inventory: Copy/sync operations across the three build scripts
- * -----------------------------------------------------------------------
- * Operation                                           build-next-isolated  prepublish  electron  Status
- * --------------------------------------------------- ------------------- ----------- -------- ------
- * .next/standalone -> outDir (cp)                              Y               Y           Y    SHARED
- * .next/static -> outDir/.next/static (cp)                    Y               Y           Y    SHARED
- * public/ -> outDir/public/ (cp)                              Y               Y           Y    SHARED
- * wreq-js -> outDir/node_modules/wreq-js                     Y               Y           Y    SHARED (extra module)
- * better-sqlite3/build -> outDir/node_modules/better-sqlite3/ Y               -           -    SHARED (native asset)
- * @swc/helpers -> outDir/node_modules/@swc/helpers             Y               Y           Y    SHARED (extra module)
- * pino-abstract-transport -> outDir/node_modules/...          Y               -           -    SHARED (extra module)
- * pino-pretty -> outDir/node_modules/pino-pretty              Y               -           -    SHARED (extra module)
- * split2 -> outDir/node_modules/split2                        Y               -           -    SHARED (extra module)
- * src/lib/db/migrations -> outDir/migrations                  Y               Y           -    SHARED (extra module)
- * src/mitm/server.cjs -> outDir/src/mitm/server.cjs           Y               -           -    SHARED (extra module)
- * scripts/dev/run-standalone.mjs -> outDir/dev/run-standalone Y               -           -    SHARED (extra module)
- * scripts/dev/standalone-server-ws.mjs -> outDir/server-ws    Y               Y           -    SHARED (extra module)
- * scripts/dev/peer-stamp.mjs -> outDir/peer-stamp.mjs         Y               Y           -    SHARED (extra module)
- * scripts/dev/responses-ws-proxy.mjs -> outDir/responses-ws-  Y               Y           -    SHARED (extra module)
- * scripts/dev/head-response-guard.cjs -> outDir/head-respons  Y               Y           -    SHARED (extra module)
- * scripts/build/runtime-env.mjs -> outDir/build/runtime-env   Y               -           -    SHARED (extra module)
- * scripts/build/bootstrap-env.mjs -> outDir/build/bootstrap-  Y               -           -    SHARED (extra module)
- * scripts/dev/healthcheck.mjs -> outDir/healthcheck.mjs       Y               -           -    SHARED (extra module)
- * playwright-core -> outDir/node_modules/playwright-core      Y               -           -    SHARED (extra module)
- * sqlite-vec -> outDir/node_modules/sqlite-vec                Y               -           -    SHARED (extra module)
- * sqlite-vec-linux-x64/arm64/darwin-x64/arm64/win-x64 (same) Y               -           -    SHARED (extra module)
- * abs-path sanitization in server.js + required-server-files  -               Y           Y    SHARED (opt-in: sanitizePaths)
- * Turbopack hashed-chunk patch (.next/server/ *.js)           -               Y           -    SHARED (opt-in: patchTurbopackChunks)
- * --- npm-UNIQUE ---
- * MITM tsc compile -> app/src/mitm/                           -               Y           -    UNIQUE (prepublish)
- * MCP server esbuild -> dist/open-sse/mcp-server/server.js    -               Y           -    UNIQUE (prepublish)
- * CLI esbuild -> bin/omniroute.mjs                            -               Y           -    UNIQUE (prepublish)
- * sidecar/doc copies (.env.example, docs/, sync-env, etc.)    -               Y           -    UNIQUE (prepublish)
- * prune + validate (pack-artifact-policy)                      -               Y           -    UNIQUE (prepublish)
- * data/ dir creation                                           -               Y           -    UNIQUE (prepublish)
- * --- electron-UNIQUE ---
- * better-sqlite3 prebuild verify + compile-input strip          -               -           Y    UNIQUE (electron)
- * Turbopack hashed-module symlink materialize (node_modules)   -               -           Y    SHARED (opt-in: materializeSymlinks)
- * symlink guard (assertBundleIsPackagable)                     -               -           Y    UNIQUE (electron)
- * removeGeneratedElectronArtifacts                             -               -           Y    UNIQUE (electron)
- */
-
-import fs from "node:fs/promises";
 import fsSync from "node:fs";
+import fs from "node:fs/promises";
 import path from "node:path";
 import { colocateLlmlinguaOptionals, SEED_PACKAGES } from "./colocateOptionals.mjs";
+import { WREQ_JS_NATIVE_BINDINGS } from "./wreqJsNative.mjs";
 
 /**
  * Check whether a path exists (async).
@@ -120,6 +76,31 @@ const EXTRA_MODULE_ENTRIES = [
     label: "wreq-js TLS runtime",
     src: ["node_modules", "wreq-js"],
     dest: ["node_modules", "wreq-js"],
+  },
+  ...WREQ_JS_NATIVE_BINDINGS.map((binding) => ({
+    label: `${binding.packageName} native binding`,
+    src: ["node_modules", ...binding.packageName.split("/")],
+    dest: ["node_modules", ...binding.packageName.split("/")],
+  })),
+  {
+    label: "third-party notices",
+    src: ["THIRD_PARTY_NOTICES.md"],
+    dest: ["THIRD_PARTY_NOTICES.md"],
+  },
+  {
+    label: "wreq-js native provenance manifest",
+    src: ["config", "release", "wreq-js-native-manifest.json"],
+    dest: ["config", "release", "wreq-js-native-manifest.json"],
+  },
+  {
+    label: "wreq-js Rust license inventory",
+    src: ["config", "release", "wreq-js-rust-license-inventory.json"],
+    dest: ["config", "release", "wreq-js-rust-license-inventory.json"],
+  },
+  {
+    label: "wreq-js Rust/native notice bundle",
+    src: ["config", "release", "wreq-js-rust-notices.md"],
+    dest: ["config", "release", "wreq-js-rust-notices.md"],
   },
   {
     label: "@swc/helpers",
@@ -292,13 +273,11 @@ const EXTRA_MODULE_ENTRIES = [
   // Next.js #88844), so without this the bundled/Docker build silently degrades
   // vector search to FTS5: the wrapper loads but getLoadablePath() throws
   // MODULE_NOT_FOUND. Copy whichever platform package npm actually installed. See #3066.
-  ...[
-    "sqlite-vec-linux-x64",
-    "sqlite-vec-linux-arm64",
-    "sqlite-vec-darwin-x64",
-    "sqlite-vec-darwin-arm64",
-    "sqlite-vec-windows-x64",
-  ].map((pkg) => ({ label: pkg, src: ["node_modules", pkg], dest: ["node_modules", pkg] })),
+  ...["sqlite-vec-linux-x64", "sqlite-vec-linux-arm64"].map((pkg) => ({
+    label: pkg,
+    src: ["node_modules", pkg],
+    dest: ["node_modules", pkg],
+  })),
 ];
 
 /**
@@ -557,9 +536,7 @@ function stampServiceWorkerBuildId(resolvedOutDir) {
   const swDest = path.join(resolvedOutDir, "public", "sw.js");
   if (!fsSync.existsSync(swDest)) return;
   const buildId =
-    process.env.OMNIROUTE_SW_BUILD_ID ||
-    process.env.SOURCE_VERSION ||
-    String(Date.now());
+    process.env.OMNIROUTE_SW_BUILD_ID || process.env.SOURCE_VERSION || String(Date.now());
   let sw = fsSync.readFileSync(swDest, "utf8");
   sw = sw.replace(
     /^const CACHE_NAME = "omniroute-pwa-v2";$/m,
@@ -707,31 +684,6 @@ function repairEmptyExternalPackageDirs(projectRoot, bundleNodeModules) {
   return summary;
 }
 
-/**
- * Materialize Turbopack "hashed external module" symlinks inside a bundled
- * node_modules dir into real, self-contained directories.
- *
- * Next.js/Turbopack standalone output emits entries like
- *   better-sqlite3-90e2652d1716b047 -> <buildMachineAbsPath>/node_modules/better-sqlite3
- * as ABSOLUTE symlinks into the build machine's tree. cpSync preserves symlinks and
- * electron-builder preserves extraResources symlinks verbatim, so the packaged app
- * ships dangling links pointing at e.g. /Users/runner/work/... On the end-user machine
- * those targets don't exist → the instrumentation hook throws
- * ERR_MODULE_NOT_FOUND: Cannot find package 'ws-<hash>' → server boot fails.
- * (issues #6724, #6594). Windows is doubly broken because it can't follow POSIX
- * symlinks at all.
- *
- * The fix: for every symlink under the given node_modules (top level + one level of
- * scoped @scope/ dirs), replace it with a REAL directory copy of its dereferenced
- * target — a dereference is the only option that is correct on every OS (Windows
- * included) and survives the machine that built it. If the link is already dangling
- * (target absent), fall back to copying a sibling real package whose name is the
- * hashed name with its trailing `-<hex>` suffix stripped; if none exists, drop the
- * dangling link so it cannot poison module resolution.
- *
- * @param {string} nodeModulesDir - absolute path to a bundled node_modules directory
- * @returns {{ materialized: number, relinked: number, removed: number }}
- */
 export function materializeBundledSymlinks(nodeModulesDir) {
   const summary = { materialized: 0, relinked: 0, removed: 0 };
   if (!fsSync.existsSync(nodeModulesDir)) return summary;

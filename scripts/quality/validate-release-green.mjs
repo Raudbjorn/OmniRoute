@@ -51,15 +51,15 @@
 // diagnose a red from the file instead of re-running the gate.
 
 import { execFile, execFileSync } from "node:child_process";
-import { promisify } from "node:util";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import { parse as parseYaml } from "yaml";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..", "..");
-const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCmd = "npm";
 export const ESLINT_TIMEOUT_MS = 60 * 60 * 1000;
 
 // Per-gate captured output. execFileSync buffers everything and the report only

@@ -1,4 +1,4 @@
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 /**
  * Validates that a file starts with a known native-binary magic number.
@@ -30,7 +30,6 @@ export function validateBinaryMagic(path) {
   // Mach-O fat (universal binary): CA FE BA BE
   if (buf[0] === 0xca && buf[1] === 0xfe && buf[2] === 0xba && buf[3] === 0xbe) return "macho-fat";
 
-  // PE (Windows .node — DLL): MZ at offset 0
   if (buf[0] === 0x4d && buf[1] === 0x5a) return "pe";
 
   return null;
@@ -41,7 +40,5 @@ export function validateBinaryMagic(path) {
  * Used to validate that a runtime-installed binary matches this OS.
  */
 export function platformBinaryLabel() {
-  if (process.platform === "win32") return "pe";
-  if (process.platform === "darwin") return "macho";
   return "elf";
 }

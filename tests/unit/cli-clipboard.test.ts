@@ -1,5 +1,5 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 
 test("clipboard.mjs pode ser importado sem erro", async () => {
   const mod = await import("../../bin/cli/utils/clipboard.mjs");
@@ -10,12 +10,6 @@ test("clipboard.mjs pode ser importado sem erro", async () => {
 test("isClipboardSupported retorna boolean", async () => {
   const { isClipboardSupported } = await import("../../bin/cli/utils/clipboard.mjs");
   const result = isClipboardSupported();
-  assert.ok(typeof result === "boolean");
-});
-
-test("copyToClipboard retorna boolean (true em macOS/win, qualquer em Linux)", async () => {
-  const { copyToClipboard } = await import("../../bin/cli/utils/clipboard.mjs");
-  const result = copyToClipboard("test-text");
   assert.ok(typeof result === "boolean");
 });
 

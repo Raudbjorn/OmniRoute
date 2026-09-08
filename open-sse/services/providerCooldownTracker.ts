@@ -12,7 +12,15 @@ import {
   type ResilienceSettings,
 } from "../../src/lib/resilience/settings";
 import { PROVIDER_PROFILES } from "../config/constants.ts";
-import { getProviderCategory } from "../config/providerRegistry.ts";
+import {
+  getProviderCategory,
+  getRegistryEntry,
+  isLocalProvider,
+} from "../config/providerRegistry.ts";
+import {
+  isLocalProvider as isLocalProviderId,
+  resolveProviderId,
+} from "../../src/shared/constants/providers.ts";
 
 interface CooldownEntry {
   /** Timestamp of last recorded failure (ms since epoch) */
@@ -38,8 +46,15 @@ interface CooldownEntry {
 // inside `providerFailureWindowMs`, and then cools for `providerCooldownMs`.
 // Connection-level entries keep the pre-existing exponential backoff.
 function providerWindowProfile(provider: string) {
-  const category = getProviderCategory(provider);
-  const profile = PROVIDER_PROFILES[category] ?? PROVIDER_PROFILES.apikey;
+  const entry = getRegistryEntry(provider);
+  // Auth-free does not imply local: remote free gateways also use "none".
+  const category =
+    isLocalProviderId(resolveProviderId(provider)) || isLocalProvider(entry?.baseUrl)
+      ? "local"
+      : entry?.authType === "none" || entry?.authType === "optional"
+        ? "apikey"
+        : getProviderCategory(provider);
+  const profile = PROVIDER_PROFILES[category];
   return {
     failureThreshold: profile.providerFailureThreshold,
     failureWindowMs: profile.providerFailureWindowMs,

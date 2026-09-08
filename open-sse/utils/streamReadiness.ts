@@ -397,6 +397,26 @@ export function hasStreamReadinessSignal(text: string): boolean {
   return finishStreamReadinessSignal(state);
 }
 
+/**
+ * Provider-agnostic check for upstream diagnostics that are deterministic for
+ * the given payload — content-policy / safety-filter rejections fail identically
+ * on every account, so they must keep their real 4xx status instead of being
+ * surfaced as a retryable 502 stream error.
+ */
+function classifyTerminalStreamDiagnostic(
+  diagnostic: string | undefined
+): { status: number; code: string; type: string } | null {
+  if (!diagnostic) return null;
+  if (
+    /content policy|safety filter|sensitive or unsafe content|content_policy_violation/i.test(
+      diagnostic
+    )
+  ) {
+    return { status: 400, code: "content_policy_violation", type: "invalid_request_error" };
+  }
+  return null;
+}
+
 function createErrorResponse(
   status: number,
   message: string,
@@ -421,29 +441,67 @@ function prependBufferedChunks(
   chunks: Uint8Array[],
   reader: ReadableStreamDefaultReader<Uint8Array>
 ): ReadableStream<Uint8Array> {
+  let bufferedIndex = 0;
+  let readInFlight = false;
+  let cancelRequested = false;
+  let readerReleased = false;
+
+  const releaseReader = () => {
+    if (readerReleased) return;
+    readerReleased = true;
+    reader.releaseLock();
+  };
+
+  const cancelReader = (reason: unknown) => {
+    if (cancelRequested) return;
+    cancelRequested = true;
+
+    try {
+      // The provider controls this promise and may never settle. Cancellation
+      // of the replay stream must remain bounded, so cleanup is deliberately
+      // fire-and-forget while the in-flight read releases the lock in `pull`.
+      void reader.cancel(reason).catch(() => {});
+    } catch {
+      // A synchronous cancellation failure is cleanup-only; the downstream
+      // stream has already been cancelled by its consumer.
+    }
+
+    if (!readInFlight) releaseReader();
+  };
+
   return new ReadableStream<Uint8Array>({
-    async start(controller) {
+    async pull(controller) {
+      if (cancelRequested) return;
+
+      // Replay exactly one readiness chunk per demand. Reading the source
+      // eagerly here would let a subsequent source error clear this queue
+      // before the consumer has observed the buffered prefix.
+      if (bufferedIndex < chunks.length) {
+        controller.enqueue(chunks[bufferedIndex]);
+        bufferedIndex += 1;
+        return;
+      }
+
+      readInFlight = true;
       try {
-        for (const chunk of chunks) {
-          controller.enqueue(chunk);
+        const { done, value } = await reader.read();
+        if (cancelRequested) return;
+        if (done) {
+          releaseReader();
+          controller.close();
+        } else if (value) {
+          controller.enqueue(value);
         }
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          if (value) controller.enqueue(value);
-        }
-
-        controller.close();
       } catch (error) {
-        controller.error(error);
+        releaseReader();
+        if (!cancelRequested) controller.error(error);
       } finally {
-        reader.releaseLock();
+        readInFlight = false;
+        if (cancelRequested) releaseReader();
       }
     },
-    async cancel(reason) {
-      await reader.cancel(reason).catch(() => {});
-      reader.releaseLock();
+    cancel(reason) {
+      cancelReader(reason);
     },
   });
 }
@@ -575,6 +633,36 @@ export async function ensureStreamReadiness(
 
         const classificationReason = "Stream ended before producing a non-ping SSE event";
         const upstreamDiagnostic = readinessState.upstreamDiagnostic || undefined;
+
+        // A stream that ends with only a deterministic upstream rejection
+        // (content-policy / safety filter) must surface the real status.
+        // Reclassifying it as a 502 early-EOF triggers pointless same-account
+        // retries and cross-account rotation for a payload that can never
+        // succeed on any account (observed: 9 retries / ~10min per request).
+        const terminal = classifyTerminalStreamDiagnostic(upstreamDiagnostic);
+        if (terminal) {
+          const reason = upstreamDiagnostic!;
+          options.log?.warn?.(
+            "STREAM",
+            `${reason} (${options.provider || "provider"}/${options.model || "unknown"})`
+          );
+          return {
+            ok: false,
+            reason,
+            classificationReason,
+            upstreamDiagnostic,
+            code: terminal.code,
+            type: terminal.type,
+            response: createErrorResponse(
+              terminal.status,
+              upstreamDiagnostic!,
+              terminal.code,
+              terminal.type,
+              upstreamDiagnostic
+            ),
+          };
+        }
+
         const reason = upstreamDiagnostic
           ? `${classificationReason}: ${upstreamDiagnostic}`
           : classificationReason;

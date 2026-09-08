@@ -50,7 +50,7 @@ export function getDefaultPluginDir(): string {
     return override;
   }
 
-  const home = process.env.HOME || process.env.USERPROFILE;
+  const home = process.env.HOME;
   const dir = join(home || "/tmp", ".omniroute", "plugins");
   log.info("scanner.dir_resolved", { dir, source: home ? "home" : "no-home-fallback" });
   return dir;

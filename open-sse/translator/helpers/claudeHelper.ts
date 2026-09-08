@@ -54,6 +54,36 @@ type ClaudeRequestBody = {
   [key: string]: unknown;
 };
 
+// Normalizes Claude Code CLI's client-side anti-redundancy / short-circuit tool_result
+// messages so non-Anthropic models (SWE 1.7 Max, Gemini, DeepSeek, Qwen, etc.) understand
+// that the file content is already available in conversation context instead of
+// misinterpreting it as a tool failure and entering an infinite retry loop.
+// Matches all known Claude Code file-unchanged sentinel strings:
+//   - "Wasted call — file unchanged since your last Read. ..."
+//   - "File unchanged since last read. The content from the earlier Read ..."
+//   - "<system-reminder>This file is already in your context ..."
+const CLAUDE_CODE_UNCHANGED_NOTICE =
+  `[Notice: The content of this file has already been retrieved earlier in this conversation ` +
+  `and is unchanged on disk. Do NOT call Read on this file again. ` +
+  `Use the previously retrieved file content from your conversation history ` +
+  `and proceed directly with your task.]`;
+
+export function normalizeClaudeCodeToolResult(content: string): string {
+  if (typeof content !== "string" || !content) return content;
+  const trimmed = content.trim();
+  const lower = trimmed.toLowerCase();
+  if (
+    lower.startsWith("wasted call") ||
+    lower.startsWith("file unchanged since last read") ||
+    lower.startsWith("<system-reminder>this file is already in your context") ||
+    lower.includes("file unchanged since your last read") ||
+    lower.includes("this file is already in your context")
+  ) {
+    return CLAUDE_CODE_UNCHANGED_NOTICE;
+  }
+  return content;
+}
+
 type KimiThinkingInput = {
   reasoning_effort?: unknown;
   thinking?: { effort?: unknown; type?: unknown } | null;
@@ -332,6 +362,183 @@ function bodyHasAnyCacheControl(body: ClaudeRequestBody): boolean {
 // - Filter empty messages
 // - Add thinking block for Anthropic endpoint (provider === "claude")
 // - Fix tool_use/tool_result ordering
+/**
+ * Repair corrupted tool-call history before it is sent upstream.
+ *
+ * A transport/decoder bug (or a misbehaving upstream) can leave `tool_use`
+ * blocks with empty `input` (`{}`, "", "null") in the client's persisted
+ * history. Models then mimic the pattern and emit empty arguments on NEW
+ * calls, producing a self-reinforcing InputValidationError loop that survives
+ * long after the transport bug is fixed.
+ *
+ * A tool_use whose schema declares required params could never have succeeded
+ * with empty input — its tool_result is always a validation error — so the
+ * pair carries no useful signal. Drop both blocks (plus the matching
+ * tool_result in a later user turn) and the "(empty response)" placeholder
+ * text the proxy itself emits for tool-use-only responses.
+ *
+ * Tools not present in `tools` are left untouched (cannot verify `required`).
+ */
+export function sanitizeEmptyToolUseHistory(
+  messages: ClaudeMessage[] | undefined,
+  tools: ClaudeTool[] | undefined
+): ClaudeMessage[] | undefined {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+  if (!Array.isArray(tools) || tools.length === 0) return messages;
+
+  const requiredTools = new Set<string>();
+  for (const t of tools) {
+    if (typeof t?.name !== "string" || !t.name) continue;
+    // Claude shape: input_schema.required. OpenAI-shape (hybrid requests):
+    // function.parameters.required.
+    const schema =
+      (t as { input_schema?: { required?: unknown } }).input_schema ??
+      (t as { function?: { parameters?: { required?: unknown } } }).function?.parameters;
+    const required = schema?.required;
+    if (Array.isArray(required) && required.length > 0) requiredTools.add(t.name);
+    // OpenAI-shaped tools carry the name under function.name.
+    const fn = (t as { function?: { name?: unknown; parameters?: { required?: unknown } } })
+      .function;
+    if (
+      typeof fn?.name === "string" &&
+      fn.name &&
+      Array.isArray(fn.parameters?.required) &&
+      fn.parameters.required.length > 0
+    ) {
+      requiredTools.add(fn.name);
+    }
+  }
+  if (requiredTools.size === 0) return messages;
+
+  const isEmptyInput = (input: unknown): boolean => {
+    if (input === undefined || input === null) return true;
+    if (typeof input === "string") {
+      const s = input.trim();
+      return s === "" || s === "{}" || s === "null";
+    }
+    return (
+      typeof input === "object" &&
+      !Array.isArray(input) &&
+      Object.keys(input as Record<string, unknown>).length === 0
+    );
+  };
+
+  const droppedIds = new Set<string>();
+  let changed = false;
+  const out: ClaudeMessage[] = [];
+
+  // First pass: identify every (empty response) string-content message and the
+  // set of tool_use ids dropped during array-content processing. The
+  // placeholder removal in the second pass only targets placeholders whose
+  // paired tool_use actually got dropped — never every historical (empty
+  // response) message, which would silently delete unrelated content and
+  // reorder turns.
+  const emptyResponseIndices = new Set<number>();
+  const droppedIdsFirstPass = new Set<string>();
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (typeof msg.content === "string" && msg.content.trim() === "(empty response)") {
+      emptyResponseIndices.add(i);
+      continue;
+    }
+    if (!Array.isArray(msg.content)) continue;
+    for (const b of msg.content) {
+      if (
+        b &&
+        typeof b === "object" &&
+        b.type === "tool_use" &&
+        typeof b.id === "string" &&
+        b.id.length > 0 &&
+        typeof b.name === "string" &&
+        requiredTools.has(b.name) &&
+        isEmptyInput(b.input)
+      ) {
+        droppedIdsFirstPass.add(b.id);
+      }
+    }
+  }
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (emptyResponseIndices.has(i)) {
+      // Only drop the (empty response) placeholder if some adjacent message
+      // actually had a paired tool_use that this pass dropped — that is, the
+      // placeholder represented the missing tool_result. Without this guard
+      // the function would silently delete every historical "(empty response)"
+      // whenever ANY declared tool has required fields, corrupting unrelated
+      // turns.
+      const adjacentDrops = (() => {
+        const prev = messages[i - 1];
+        const next = messages[i + 1];
+        const touches = (m: typeof msg | undefined): boolean => {
+          if (!m || !Array.isArray(m.content)) return false;
+          return m.content.some(
+            (b) =>
+              b &&
+              typeof b === "object" &&
+              ((b.type === "tool_use" &&
+                typeof b.id === "string" &&
+                droppedIdsFirstPass.has(b.id)) ||
+                (b.type === "tool_result" &&
+                  typeof b.tool_use_id === "string" &&
+                  droppedIdsFirstPass.has(b.tool_use_id)))
+          );
+        };
+        return touches(prev) || touches(next);
+      })();
+      if (adjacentDrops) {
+        changed = true;
+        continue;
+      }
+      out.push(msg);
+      continue;
+    }
+    if (!Array.isArray(msg.content)) {
+      out.push(msg);
+      continue;
+    }
+    const content = msg.content.filter((b) => {
+      if (!b || typeof b !== "object") return true;
+      if (
+        b.type === "tool_use" &&
+        typeof b.id === "string" &&
+        b.id.length > 0 &&
+        typeof b.name === "string" &&
+        requiredTools.has(b.name) &&
+        isEmptyInput(b.input)
+      ) {
+        droppedIds.add(b.id);
+        changed = true;
+        return false;
+      }
+      if (
+        b.type === "tool_result" &&
+        typeof b.tool_use_id === "string" &&
+        droppedIds.has(b.tool_use_id)
+      ) {
+        changed = true;
+        return false;
+      }
+      if (b.type === "text" && b.text === "(empty response)") {
+        changed = true;
+        return false;
+      }
+      return true;
+    });
+    if (content.length === 0) {
+      changed = true;
+      continue;
+    }
+    if (content.length !== msg.content.length) {
+      out.push({ ...msg, content });
+    } else {
+      out.push(msg);
+    }
+  }
+
+  return changed ? out : messages;
+}
+
 export function prepareClaudeRequest(
   body: ClaudeRequestBody,
   provider: string | null = null,
@@ -419,16 +626,32 @@ export function prepareClaudeRequest(
       }
     }
 
-    // Pass 1.4: Filter out tool_use blocks with empty names (causes Claude 400 error)
-    // Apply to ALL roles (assistant tool_use + any user messages that may carry tool_use)
-    // Also filter tool_result blocks with missing tool_use_id
+    // Pass 1.4: Drop nameless tool_use blocks and their matching tool_result blocks.
+    // Never infer a name from arguments: schemas can overlap, and attaching a result
+    // to the wrong declaration is worse than omitting the invalid historical pair.
+    const namelessToolUseIds = new Set<string>();
+    for (const msg of filtered) {
+      if (!Array.isArray(msg.content)) continue;
+      for (const block of msg.content) {
+        if (
+          block.type === "tool_use" &&
+          !(typeof block.name === "string" && block.name.trim()) &&
+          typeof block.id === "string" &&
+          block.id
+        ) {
+          namelessToolUseIds.add(block.id);
+        }
+      }
+    }
+
     for (const msg of filtered) {
       if (Array.isArray(msg.content)) {
         msg.content = msg.content.filter(
-          (block) => block.type !== "tool_use" || (block.name && block.name?.trim())
-        );
-        msg.content = msg.content.filter(
-          (block) => block.type !== "tool_result" || block.tool_use_id
+          (block) =>
+            (block.type !== "tool_use" ||
+              (typeof block.name === "string" && Boolean(block.name.trim()))) &&
+            (block.type !== "tool_result" ||
+              (Boolean(block.tool_use_id) && !namelessToolUseIds.has(String(block.tool_use_id))))
         );
         // Anthropic-shape upstreams enforce `^[a-zA-Z0-9_-]+$` on tool ids. Client
         // histories can carry ids with `.`/`:`/`#` (e.g. replayed from another
@@ -444,6 +667,26 @@ export function prepareClaudeRequest(
             block.tool_use_id
           ) {
             block.tool_use_id = sanitizeToolId(block.tool_use_id);
+          }
+        }
+        // Non-Anthropic Claude-shape providers (kimi-coding, glmt, zai, …) can
+        // misread Claude Code's client-side "file unchanged" sentinel as a tool
+        // failure and retry forever. The OpenAI/Gemini request translators
+        // already normalize it; apply the same rewrite here for the
+        // Claude-passthrough path (skipped for Anthropic-native upstreams that
+        // understand the sentinel as-is).
+        if (!supportsRedactedThinking) {
+          for (const block of msg.content) {
+            if (block.type !== "tool_result") continue;
+            if (typeof block.content === "string") {
+              block.content = normalizeClaudeCodeToolResult(block.content);
+            } else if (Array.isArray(block.content)) {
+              for (const c of block.content) {
+                if (c?.type === "text" && typeof c.text === "string") {
+                  c.text = normalizeClaudeCodeToolResult(c.text);
+                }
+              }
+            }
           }
         }
       }
@@ -480,6 +723,23 @@ export function prepareClaudeRequest(
     if (body.tools && Array.isArray(body.tools)) {
       body.tools = body.tools.filter((tool) => tool.name && tool.name?.trim());
     }
+
+    // Pass 1.5-prep: re-filter messages whose content went empty AFTER the
+    // Pass 1.4 nameless-tool-use drop. The Pass 1 empty-message filter ran
+    // before that drop, so non-final assistant messages whose ONLY content was
+    // a nameless tool_use now have `content: []` — Anthropic rejects the empty
+    // content array. Drop them while preserving the original final assistant
+    // even if its content is empty.
+    const originalLen = body.messages.length;
+    filtered = filtered.filter((msg, idx) => {
+      const isOriginalFinalAssistant =
+        idx === filtered.length - 1 &&
+        msg.role === "assistant" &&
+        filtered.length === originalLen;
+      if (isOriginalFinalAssistant) return true;
+      if (!Array.isArray(msg.content)) return true;
+      return msg.content.length > 0;
+    });
 
     // Pass 1.45: Move stray tool_result blocks out of assistant messages
     // before any ordering fix runs (#2815).

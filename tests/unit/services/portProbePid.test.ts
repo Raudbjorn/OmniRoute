@@ -6,20 +6,19 @@
  * that into `null`, and an adopted service silently kept `pid: null` forever.
  */
 
-import { test } from "node:test";
-import assert from "node:assert/strict";
-import { createServer } from "node:net";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import {
   parseLsofPid,
   parseNetstatPid,
   parseSsPid,
-  parseWindowsNetstatPid,
   resolvePortPid,
 } from "@/lib/services/portProbe";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { test } from "node:test";
 
 /** Absolute path of `command`, or null when it is not on PATH. */
 function which(command: string): string | null {
@@ -65,11 +64,6 @@ test("parseNetstatPid matches on the local address, not the foreign one", () => 
   assert.equal(parseNetstatPid(stdout, 20128), 596922);
 });
 
-test("parseNetstatPid reads macOS process:pid output", () => {
-  const stdout = "tcp4 0 0 127.0.0.1.20128 *.* LISTEN 0 0 131072 131072 node:596922 00100\n";
-  assert.equal(parseNetstatPid(stdout, 20128), 596922);
-});
-
 test("parseNetstatPid ignores non-listening rows and unknown ports", () => {
   const stdout =
     "tcp        0      0 127.0.0.1:20128         1.2.3.4:5555            ESTABLISHED 596922/node\n";
@@ -96,22 +90,6 @@ const WINDOWS_NETSTAT_ANO = [
   "  UDP    0.0.0.0:5353           *:*                                    3460",
   "",
 ].join("\r\n");
-
-test("parseWindowsNetstatPid reads the pid from a LISTENING row (#11236)", () => {
-  assert.equal(parseWindowsNetstatPid(WINDOWS_NETSTAT_ANO, 20128), 12345);
-  assert.equal(parseWindowsNetstatPid(WINDOWS_NETSTAT_ANO, 8317), 5678);
-});
-
-test("parseWindowsNetstatPid matches the local address, not the foreign one", () => {
-  // 443 appears only as a foreign address on an ESTABLISHED row.
-  assert.equal(parseWindowsNetstatPid(WINDOWS_NETSTAT_ANO, 443), null);
-  // 5353 appears only on a UDP row, which has no LISTENING state.
-  assert.equal(parseWindowsNetstatPid(WINDOWS_NETSTAT_ANO, 5353), null);
-  // A port that shares a suffix with a listening one must not match: 0128 vs
-  // 20128 — the `:` anchor on the local address prevents the partial hit.
-  assert.equal(parseWindowsNetstatPid(WINDOWS_NETSTAT_ANO, 128), null);
-  assert.equal(parseWindowsNetstatPid("", 20128), null);
-});
 
 test("resolvePortPid finds the pid holding a port", async () => {
   const server = createServer();

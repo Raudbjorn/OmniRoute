@@ -1,8 +1,8 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 
 import {
   buildCloudflaredChildEnv,
@@ -10,11 +10,11 @@ import {
   extractCloudflaredErrorMessage,
   extractCloudflaredHostnameFromConfig,
   extractTryCloudflareUrl,
+  getCloudflaredAssetSpec,
   getCloudflaredNamedTunnelConfig,
+  getCloudflaredStartArgs,
   getCloudflaredTunnelStatus,
   getDefaultCloudflaredCertEnv,
-  getCloudflaredStartArgs,
-  getCloudflaredAssetSpec,
   getSha256FromGitHubDigest,
   normalizeCloudflaredHostname,
   verifyCloudflaredDownloadDigest,
@@ -70,16 +70,6 @@ test("getCloudflaredAssetSpec resolves linux amd64 binary", () => {
   });
 });
 
-test("getCloudflaredAssetSpec resolves darwin arm64 archive", () => {
-  const spec = getCloudflaredAssetSpec("darwin", "arm64");
-
-  assert.deepEqual(spec, {
-    assetName: "cloudflared-darwin-arm64.tgz",
-    binaryName: "cloudflared",
-    archive: "tgz",
-  });
-});
-
 test("getCloudflaredAssetSpec returns null for unsupported platforms", () => {
   assert.equal(getCloudflaredAssetSpec("freebsd", "x64"), null);
 });
@@ -118,9 +108,6 @@ test("buildCloudflaredChildEnv keeps runtime essentials, isolates runtime dirs, 
       cacheDir: "/managed/runtime/cache",
       dataDir: "/managed/runtime/data",
       tempDir: "/managed/runtime/tmp",
-      userProfileDir: "/managed/runtime/userprofile",
-      appDataDir: "/managed/runtime/userprofile/AppData/Roaming",
-      localAppDataDir: "/managed/runtime/userprofile/AppData/Local",
     },
     {}
   );
@@ -132,9 +119,6 @@ test("buildCloudflaredChildEnv keeps runtime essentials, isolates runtime dirs, 
     XDG_CONFIG_HOME: "/managed/runtime/config",
     XDG_CACHE_HOME: "/managed/runtime/cache",
     XDG_DATA_HOME: "/managed/runtime/data",
-    USERPROFILE: "/managed/runtime/userprofile",
-    APPDATA: "/managed/runtime/userprofile/AppData/Roaming",
-    LOCALAPPDATA: "/managed/runtime/userprofile/AppData/Local",
     TMPDIR: "/managed/runtime/tmp",
     TMP: "/managed/runtime/tmp",
     TEMP: "/managed/runtime/tmp",
@@ -155,9 +139,6 @@ test("buildCloudflaredChildEnv allows overriding the tunnel transport protocol",
       cacheDir: "/managed/runtime/cache",
       dataDir: "/managed/runtime/data",
       tempDir: "/managed/runtime/tmp",
-      userProfileDir: "/managed/runtime/userprofile",
-      appDataDir: "/managed/runtime/userprofile/AppData/Roaming",
-      localAppDataDir: "/managed/runtime/userprofile/AppData/Local",
     },
     {}
   );
@@ -178,9 +159,6 @@ test("buildCloudflaredChildEnv preserves auto negotiation when explicitly reques
       cacheDir: "/managed/runtime/cache",
       dataDir: "/managed/runtime/data",
       tempDir: "/managed/runtime/tmp",
-      userProfileDir: "/managed/runtime/userprofile",
-      appDataDir: "/managed/runtime/userprofile/AppData/Roaming",
-      localAppDataDir: "/managed/runtime/userprofile/AppData/Local",
     },
     {}
   );
@@ -209,9 +187,6 @@ test("buildCloudflaredChildEnv injects discovered CA paths when the parent env o
       cacheDir: "/managed/runtime/cache",
       dataDir: "/managed/runtime/data",
       tempDir: "/managed/runtime/tmp",
-      userProfileDir: "/managed/runtime/userprofile",
-      appDataDir: "/managed/runtime/userprofile/AppData/Roaming",
-      localAppDataDir: "/managed/runtime/userprofile/AppData/Local",
     },
     {
       SSL_CERT_FILE: "/etc/ssl/certs/ca-certificates.crt",

@@ -105,11 +105,7 @@ export default function GetStarted() {
                 <div className="text-gray-400 text-xs">
                   <span className="text-purple-400">{t("dataLocation")}</span>
                   <br />
-                  <span className="text-gray-500">{t("dataLocationMacLinux")}</span>{" "}
                   <span className="break-all">~/.omniroute/db.json</span>
-                  <br />
-                  <span className="text-gray-500">{t("dataLocationWindows")}</span>{" "}
-                  <span className="break-all">%APPDATA%/omniroute/db.json</span>
                 </div>
               </div>
             </div>

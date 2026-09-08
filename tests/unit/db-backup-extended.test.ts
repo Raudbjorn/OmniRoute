@@ -1,12 +1,12 @@
-import test from "node:test";
+import type { NextRequest } from "next/server";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { NextRequest } from "next/server";
+import test from "node:test";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-backup-"));
-const isWindows = process.platform === "win32";
+const isWindows = false;
 process.env.DATA_DIR = TEST_DATA_DIR;
 
 const core = await import("../../src/lib/db/core.ts");
@@ -95,6 +95,32 @@ test("backupDbFile creates manual backups and listDbBackups returns metadata", a
   assert.equal(entry.reason, "manual");
   assert.equal(entry.connectionCount, 12);
   assert.equal(fs.existsSync(backupPath), true);
+});
+
+test("listDbBackups orders mixed timestamp and content-addressed names by mtime", async () => {
+  seedConnections(2);
+  fs.mkdirSync(core.DB_BACKUPS_DIR, { recursive: true });
+
+  const lexicallyFutureButOld = "db_2099-01-01T00-00-00-000Z_manual.sqlite";
+  const timestampMiddle = "db_2026-09-02T00-00-00-000Z_manual.sqlite";
+  const contentAddressedNewest = `db_state-${"a".repeat(64)}_pre-migration.sqlite`;
+  for (const filename of [lexicallyFutureButOld, timestampMiddle, contentAddressedNewest]) {
+    await core.getDbInstance().backup(path.join(core.DB_BACKUPS_DIR, filename));
+  }
+
+  const now = Date.now() / 1000;
+  fs.utimesSync(path.join(core.DB_BACKUPS_DIR, lexicallyFutureButOld), now - 120, now - 120);
+  fs.utimesSync(path.join(core.DB_BACKUPS_DIR, timestampMiddle), now - 60, now - 60);
+  fs.utimesSync(path.join(core.DB_BACKUPS_DIR, contentAddressedNewest), now, now);
+
+  const backups = await backupDb.listDbBackups();
+  assert.deepEqual(
+    backups.map((backup) => backup.id),
+    [contentAddressedNewest, timestampMiddle, lexicallyFutureButOld],
+    "content-addressed migration snapshots must not make filename order masquerade as recency"
+  );
+  assert.equal(backups[0]?.reason, "pre-migration");
+  assert.equal(backups[0]?.connectionCount, 2);
 });
 
 test("listDbBackups returns an empty list when the backup directory is missing", async () => {

@@ -1,9 +1,9 @@
+import type { SqliteAdapter } from "@/lib/db/adapters/types";
+import { execFile } from "child_process";
 import { access, constants, readFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-import { execFile } from "child_process";
 import { promisify } from "util";
-import type { SqliteAdapter } from "@/lib/db/adapters/types";
 
 const execFileAsync = promisify(execFile);
 
@@ -26,19 +26,6 @@ export interface CursorInstallProbe {
   home?: string;
 }
 
-/**
- * On Linux, verify that the Cursor IDE is actually installed before trusting
- * leftover config files (state.vscdb). A removed Cursor install can leave its
- * `~/.config/Cursor/...` directory behind, which would otherwise trigger a
- * false-positive auto-import and create a phantom Cursor provider connection.
- *
- * The check prefers `which cursor` and falls back to a readable
- * `~/.local/share/applications/cursor.desktop` entry (the desktop launcher a
- * package install drops even when the CLI shim is not on PATH).
- *
- * Port of decolua/9router#313 — only the linux probe is added; macOS/Windows
- * keep their existing behavior (no install probe).
- */
 export async function verifyLinuxCursorInstalled(probe: CursorInstallProbe = {}): Promise<boolean> {
   const exec = probe.execFile ?? execFileAsync;
   const canAccess = probe.access ?? access;
@@ -147,61 +134,14 @@ export function fuzzyExtractCursorTokensFromRows(
   return tokens;
 }
 
-/**
- * Resolve the candidate state.vscdb paths to probe for a given platform.
- * macOS now probes both the standard install and the Insiders channel
- * (port: 9router#161 — fixes false "Cursor database not found" on Macs
- * that only have Cursor Insiders installed).
- */
-export function cursorDbCandidatePaths(
-  platform: NodeJS.Platform,
-  env: { home: string; appdata?: string }
-): string[] {
-  if (platform === "darwin") {
-    return [
-      join(env.home, "Library/Application Support/Cursor/User/globalStorage/state.vscdb"),
-      join(
-        env.home,
-        "Library/Application Support/Cursor - Insiders/User/globalStorage/state.vscdb"
-      ),
-    ];
-  }
+export function cursorDbCandidatePaths(platform: NodeJS.Platform, env: { home: string }): string[] {
   if (platform === "linux") {
     return [join(env.home, ".config/Cursor/User/globalStorage/state.vscdb")];
   }
-  if (platform === "win32") {
-    return [join(env.appdata || "", "Cursor/User/globalStorage/state.vscdb")];
-  }
+
   return [];
 }
 
-/**
- * Try to read credentials from cursor-agent's local auth state.
- *
- * Probes two known candidate locations, in order:
- *   1. `~/.config/cursor/auth.json` — written by `cursor-agent` CLI after
- *      login (the official curl-installer convention).
- *   2. `~/.cursor/agent-cli-state.json` — a second candidate this codebase's
- *      own `src/shared/services/cliRuntime.ts` (`CLI_TOOLS.cursor.paths.state`)
- *      already lists but did not previously probe for auth. If it lacks a
- *      usable `accessToken` string field, this candidate is skipped
- *      gracefully.
- *
- * KNOWN LIMITATION: some `cursor-agent` releases may store the access/refresh
- * token in the OS keychain instead of a locally-readable file. When neither
- * candidate above yields a token, this function correctly reports
- * `{found: false}` even if `cursor-agent status` reports the CLI as
- * authenticated — this is a documented, accepted gap (see the renewal plan's
- * "Trade-offs Accepted" section), not a silent bug. Confirmed, not just
- * hypothetical: empirically validated against a real, authenticated
- * `cursor-agent` install (v2026.07.23, Homebrew Cask `cursor-cli`) on
- * 2026-07-31 — that install's `~/.cursor/agent-cli-state.json` exists but its
- * actual schema is `{version, hasShownAgentCommandTip,
- * hasClearedLegacyStatsigFields}`, with no `accessToken` field at all, while
- * `cursor-agent status --format json` reported `isAuthenticated: true`. This
- * candidate is correctly skipped for that install; the graceful-degradation
- * fallback below is confirmed correct, not a gap in this specific case.
- */
 export async function tryAgentAuth(): Promise<{
   found: boolean;
   accessToken?: string;
@@ -230,30 +170,6 @@ export async function tryAgentAuth(): Promise<{
   return { found: false, error: "cursor-agent auth.json not found" };
 }
 
-/**
- * Try to read credentials from Cursor IDE's state.vscdb.
- *
- * On macOS this probes both `Cursor/` and `Cursor - Insiders/`, returns a
- * descriptive error if the DB exists but cannot be opened (e.g. WAL lock
- * because Cursor is currently running), tries multiple known key names,
- * normalizes JSON-encoded string values, and falls back to a fuzzy LIKE
- * lookup if exact keys are missing — guards against silent breakage when
- * Cursor renames a key in a future release.
- *
- * Linux and Windows code paths are unchanged.
- *
- * `options.timeoutMs` bounds the SQLite busy-timeout on the open (default
- * 2000ms, byte-identical for existing callers). The unattended sweep path
- * (`src/lib/cursor/renewal.ts`) passes a much shorter override — an
- * automated background job that fails to acquire the lock quickly should
- * fail fast and let the existing exponential circuit-breaker retry on a
- * later tick, rather than blocking the shared Node event loop for up to
- * ~2s per driver in the fallback cascade (worst case ~4s: better-sqlite3's
- * busy-timeout elapsing, then node:sqlite's). The one-shot, user-initiated
- * `/api/oauth/cursor/auto-import` modal action keeps the longer default,
- * since a single explicit click reasonably can wait longer for a better
- * one-time success rate.
- */
 export async function tryIdeAuth(options?: { timeoutMs?: number }): Promise<{
   found: boolean;
   accessToken?: string;
@@ -266,36 +182,14 @@ export async function tryIdeAuth(options?: { timeoutMs?: number }): Promise<{
   const platform = process.platform;
   const candidates = cursorDbCandidatePaths(platform, {
     home: homedir(),
-    appdata: process.env.APPDATA,
   });
 
   if (candidates.length === 0) {
     return { found: false, error: "Unsupported platform" };
   }
 
-  // Probe candidates (matters on macOS where there can be >1; on linux/win32
-  // there is exactly one and we skip the probe to preserve the original
-  // error message).
   let dbPath: string | undefined;
-  if (platform === "darwin") {
-    for (const path of candidates) {
-      try {
-        await access(path, constants.R_OK);
-        dbPath = path;
-        break;
-      } catch {
-        // continue probing
-      }
-    }
-    if (!dbPath) {
-      return {
-        found: false,
-        error:
-          "Cursor database not found in known macOS locations. " +
-          "Make sure Cursor IDE is installed and opened at least once.",
-      };
-    }
-  } else {
+  {
     // On Linux, verify Cursor is actually installed before trusting leftover
     // config files — a removed install can leave ~/.config/Cursor behind and
     // would otherwise create a phantom Cursor connection (port: 9router#313).
@@ -322,22 +216,9 @@ export async function tryIdeAuth(options?: { timeoutMs?: number }): Promise<{
     // options.timeoutMs doc comment above).
     db = tryOpenSync(dbPath, { readonly: true, fileMustExist: true, timeout: timeoutMs });
     if (!db) {
-      if (platform === "darwin") {
-        return {
-          found: false,
-          error: `Found Cursor database at ${dbPath} but could not open it (driver unavailable)`,
-        };
-      }
       return { found: false, error: "Cursor IDE database driver unavailable" };
     }
   } catch (error) {
-    if (platform === "darwin") {
-      const message = error instanceof Error ? error.message : String(error);
-      return {
-        found: false,
-        error: `Found Cursor database at ${dbPath} but could not open it: ${message}`,
-      };
-    }
     return { found: false, error: "Cursor IDE database not found" };
   }
 
@@ -349,20 +230,6 @@ export async function tryIdeAuth(options?: { timeoutMs?: number }): Promise<{
       .all(...desiredKeys) as VscDbRow[];
 
     let tokens = extractCursorTokensFromRows(rows);
-
-    // Fuzzy fallback: only on macOS — original report (and observed schema
-    // drift) is on darwin; other platforms keep exact-key behavior.
-    if (platform === "darwin" && (!tokens.accessToken || !tokens.machineId)) {
-      const fallbackRows = db
-        .prepare(
-          "SELECT key, value FROM itemTable " +
-            "WHERE key LIKE '%cursorAuth/%' " +
-            "OR key LIKE '%machineId%' " +
-            "OR key LIKE '%serviceMachineId%'"
-        )
-        .all() as VscDbRow[];
-      tokens = fuzzyExtractCursorTokensFromRows(fallbackRows, tokens);
-    }
 
     db.close();
 

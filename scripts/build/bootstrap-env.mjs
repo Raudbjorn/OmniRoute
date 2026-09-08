@@ -18,7 +18,7 @@
  *   4. process.env            (shell / Docker -e flags, highest priority)
  */
 
-import { randomBytes, createDecipheriv, scryptSync, createHash } from "node:crypto";
+import { createDecipheriv, createHash, randomBytes, scryptSync } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
@@ -38,11 +38,6 @@ function resolveDataDir(overridePath, env = process.env) {
 
   const configured = env.DATA_DIR?.trim();
   if (configured) return resolve(configured);
-
-  if (process.platform === "win32") {
-    const appData = env.APPDATA || join(homedir(), "AppData", "Roaming");
-    return join(appData, "omniroute");
-  }
 
   const xdg = env.XDG_CONFIG_HOME?.trim();
   if (xdg) return join(resolve(xdg), "omniroute");

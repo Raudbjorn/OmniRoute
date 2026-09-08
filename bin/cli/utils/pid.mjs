@@ -63,16 +63,6 @@ export function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// #2460: Default raised from 15s to 60s so Windows users (slower Next.js
-// cold start due to filesystem watchers, antivirus, etc.) get a working
-// "server ready" signal instead of a phantom timeout while the server is
-// still booting. TCP fallback marks the server as ready when the port
-// has been listening for >= 3s consecutively AND the health route is
-// actively rejecting/resetting connections fast (route not mounted yet,
-// but the HTTP server is clearly alive and responsive) — never for a
-// socket that merely accepts TCP and then hangs without ever completing
-// a single request (#6800: that's a still-booting/CPU-bound process, not
-// a "route not mounted" gap, and must NOT be reported as ready).
 export async function waitForServer(port, timeout = 60000) {
   const start = Date.now();
   let tcpListeningSince = null;
@@ -162,4 +152,28 @@ async function isPortListening(port) {
     )
   );
   return results.some((ok) => ok);
+}
+
+/** Send SIGTERM, wait for cleanup, and escalate only if the process stays alive. */
+export async function stopProcessGracefully({
+  pid,
+  timeoutMs = 5000,
+  pollIntervalMs = 100,
+  isPidRunning: running = isPidRunning,
+  sleep: wait = sleep,
+}) {
+  try {
+    process.kill(pid, "SIGTERM");
+  } catch {
+    return;
+  }
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs && running(pid)) {
+    await wait(pollIntervalMs);
+  }
+  if (running(pid)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
+  }
 }

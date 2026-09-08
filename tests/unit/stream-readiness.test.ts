@@ -451,6 +451,123 @@ test("ensureStreamReadiness preserves buffered chunks when stream starts", async
   assert.match(text, / world/);
 });
 
+test("ensureStreamReadiness replays buffered chunks before a subsequent source error", async () => {
+  let reads = 0;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        reads += 1;
+        if (reads === 1) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                object: "chat.completion.chunk",
+                choices: [{ index: 0, delta: { role: "assistant", content: "prefix" } }],
+              })}\n\n`
+            )
+          );
+          return;
+        }
+        controller.error(Object.assign(new Error("terminal source failure"), { statusCode: 502 }));
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } }
+  );
+
+  const result = await ensureStreamReadiness(response, { timeoutMs: 100 });
+  assert.equal(result.ok, true);
+  assert.ok(result.response.body);
+  const reader = result.response.body.getReader();
+  const first = await reader.read();
+
+  assert.equal(first.done, false);
+  assert.match(new TextDecoder().decode(first.value), /prefix/);
+  await assert.rejects(reader.read(), /terminal source failure/);
+});
+
+test("ensureStreamReadiness replays multiple buffered chunks in order before an error", async () => {
+  let reads = 0;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      pull(controller) {
+        reads += 1;
+        if (reads === 1) {
+          controller.enqueue(encoder.encode(": keepalive\n\n"));
+          return;
+        }
+        if (reads === 2) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({
+                object: "chat.completion.chunk",
+                choices: [{ index: 0, delta: { role: "assistant", content: "ready" } }],
+              })}\n\n`
+            )
+          );
+          return;
+        }
+        controller.error(new Error("failure after buffered prefix"));
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } }
+  );
+
+  const result = await ensureStreamReadiness(response, { timeoutMs: 100 });
+  assert.equal(result.ok, true);
+  assert.ok(result.response.body);
+  const reader = result.response.body.getReader();
+  const first = await reader.read();
+  const second = await reader.read();
+
+  assert.equal(first.done, false);
+  assert.equal(second.done, false);
+  assert.match(new TextDecoder().decode(first.value), /keepalive/);
+  assert.match(new TextDecoder().decode(second.value), /ready/);
+  await assert.rejects(reader.read(), /failure after buffered prefix/);
+});
+
+test("ensureStreamReadiness cancellation is bounded when upstream cancel never settles", async () => {
+  let cancelCalls = 0;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `data: ${JSON.stringify({
+              object: "chat.completion.chunk",
+              choices: [{ index: 0, delta: { role: "assistant", content: "prefix" } }],
+            })}\n\n`
+          )
+        );
+      },
+      pull() {
+        return new Promise<void>(() => {});
+      },
+      cancel() {
+        cancelCalls += 1;
+        return new Promise<void>(() => {});
+      },
+    }),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } }
+  );
+
+  const result = await ensureStreamReadiness(response, { timeoutMs: 100 });
+  assert.equal(result.ok, true);
+  assert.ok(result.response.body);
+  const reader = result.response.body.getReader();
+  const first = await reader.read();
+  assert.equal(first.done, false);
+
+  await Promise.race([
+    reader.cancel("client disconnected"),
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(() => reject(new Error("readiness cancellation stayed pending")), 500)
+    ),
+  ]);
+  await reader.cancel("duplicate cancellation");
+  assert.equal(cancelCalls, 1);
+});
+
 test("ensureStreamReadiness honors configured timeouts above 2000ms", async () => {
   const response = new Response(
     streamFromChunks(
@@ -616,10 +733,7 @@ test("ensureStreamReadiness preserves sanitized error-only diagnostics on early 
   assert.equal(result.response.status, 502);
   assert.equal(result.code, "STREAM_EARLY_EOF");
   assert.equal(result.type, "stream_early_eof");
-  assert.equal(
-    result.classificationReason,
-    "Stream ended before producing a non-ping SSE event"
-  );
+  assert.equal(result.classificationReason, "Stream ended before producing a non-ping SSE event");
   assert.equal(
     result.upstreamDiagnostic,
     "UPSTREAM_DETAIL quota exhausted; retry after 2s; empty content Bearer [REDACTED] <path>"
@@ -636,17 +750,48 @@ test("ensureStreamReadiness preserves sanitized error-only diagnostics on early 
   assert.equal(body.upstream_details.error.message, result.upstreamDiagnostic);
   assert.equal(warnings.length, 1);
 
-  for (const surfaced of [
-    result.reason,
-    body.upstream_details.error.message,
-    warnings[0],
-  ]) {
+  for (const surfaced of [result.reason, body.upstream_details.error.message, warnings[0]]) {
     assert.match(surfaced, /UPSTREAM_DETAIL/);
-    assert.doesNotMatch(
-      surfaced,
-      /SECOND_DETAIL|TOP_SECRET|\/srv\/omniroute\/handler\.ts/
-    );
+    assert.doesNotMatch(surfaced, /SECOND_DETAIL|TOP_SECRET|\/srv\/omniroute\/handler\.ts/);
   }
+});
+
+test("ensureStreamReadiness surfaces content-policy diagnostics as terminal 400, not retryable 502", async () => {
+  const warnings: string[] = [];
+  const response = new Response(
+    streamFromChunks([
+      `data: ${JSON.stringify({
+        error: {
+          message:
+            "Devin Desktop stream error: permission_denied: Your request was blocked by our " +
+            "content policy. Please remove sensitive or unsafe content from your prompt.",
+        },
+      })}\n\n`,
+    ]),
+    { status: 200, headers: { "Content-Type": "text/event-stream" } }
+  );
+
+  const result = await ensureStreamReadiness(response, {
+    timeoutMs: 100,
+    provider: "devin-desktop",
+    model: "swe-1-7",
+    log: { warn: (_tag, message) => warnings.push(message) },
+  });
+
+  assert.equal(result.ok, false);
+  if (result.ok) assert.fail("error-only SSE payload must remain a readiness failure");
+  assert.equal(result.response.status, 400);
+  assert.equal(result.code, "content_policy_violation");
+  assert.equal(result.type, "invalid_request_error");
+  assert.match(result.reason, /content policy/i);
+
+  const body = (await result.response.json()) as {
+    error: { message: string; code: string; type: string };
+  };
+  // Public-safe projection: the wire code is the generic 400 identifier; the
+  // internal struct still carries `content_policy_violation` for retry gating.
+  assert.equal(body.error.code, "bad_request");
+  assert.match(body.error.message, /content policy/i);
 });
 
 test("stream-readiness diagnostics cannot reclassify Antigravity account exhaustion (#8972)", () => {

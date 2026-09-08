@@ -7,8 +7,8 @@
  * Build, dast-smoke) failed on every fresh CI checkout with
  * "npm-cli.js not found next to the running Node binary".
  */
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 
 import { resolveBundledNpmEntry } from "../../../scripts/build/resolveNpmEntry.ts";
 
@@ -27,15 +27,6 @@ test("POSIX layout: finds npm-cli.js under <prefix>/lib/node_modules (hosted run
     exists: (p) => p === POSIX_NPM_CLI,
   });
   assert.equal(resolved, POSIX_NPM_CLI);
-});
-
-test("Windows layout: still finds npm-cli.js beside the node binary", () => {
-  const resolved = resolveBundledNpmEntry("npm-cli.js", {
-    execPath: WIN_STYLE_NODE,
-    npmExecPath: undefined,
-    exists: (p) => p === WIN_STYLE_NPM_CLI,
-  });
-  assert.equal(resolved, WIN_STYLE_NPM_CLI);
 });
 
 test("npm_execpath (set by `npm run`) wins and resolves npx-cli.js as its sibling", () => {
@@ -59,10 +50,6 @@ test("returns null when no layout matches", () => {
 });
 
 test("live environment: the real node install can resolve npm-cli.js (POSIX regression guard)", (t) => {
-  if (process.platform === "win32") {
-    t.skip("POSIX-only live check");
-    return;
-  }
   const resolved = resolveBundledNpmEntry("npm-cli.js");
   assert.ok(
     resolved,

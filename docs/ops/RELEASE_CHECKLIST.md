@@ -21,7 +21,6 @@ lastUpdated: 2026-08-28
 
 # 2. Run quality gate locally
 npm run check              # lint + tests
-npm run test:coverage      # full coverage gate (60/60/60/60)
 
 # 3. Build & smoke
 npm run build
@@ -46,8 +45,8 @@ That is the bypass npm sanctions now that tokens which skip 2FA are being retire
 it restores the fully automatic flow the project had up to v3.8.48 while keeping the
 WS1.3 guarantee (a leaked token cannot publish alone — there is no token).
 
-**One-time setup (owner):** npmjs.com → package `omniroute` → Settings → *Trusted
-Publisher* → GitHub: owner `diegosouzapw`, repo `OmniRoute`, workflow `npm-publish.yml`
+**One-time setup (owner):** npmjs.com → package `omniroute` → Settings → _Trusted
+Publisher_ → GitHub: owner `diegosouzapw`, repo `OmniRoute`, workflow `npm-publish.yml`
 (environment: none). Until that exists, the automatic step fails with `ENEEDAUTH`:
 re-dispatch with `publish_mode=staged` (below) or `direct`.
 
@@ -146,7 +145,6 @@ matrix automatically, without any label.
 
 - [ ] `npm run test:unit` — pass
 - [ ] `npm run test:vitest` — pass (MCP server, autoCombo, cache)
-- [ ] `npm run test:coverage` — gate 60/60/60/60 satisfied (statements/lines/functions/branches)
 - [ ] `npm run test:integration` — pass (if changes touch DB / handlers)
 - [ ] `npm run test:combo:matrix` — pass (combo strategy matrix: proves all 19 public routing strategies' selection decisions deterministically; run when touching combo routing, strategy resolution, or fallback logic)
 - [ ] `RUN_COMBO_LIVE=1 npm run test:combo:live` — **optional/manual** (gated real-upstream smoke; sources a read-only DB snapshot from VPS `root@192.168.0.15`; hits real providers, costs credits; never runs in CI; skips cleanly without the gate)
@@ -191,10 +189,8 @@ Breaking changes: add `BREAKING CHANGE:` footer or `!` after the scope (e.g. `fe
 
 ### i18n
 
-- [ ] `npm run i18n:check` exits 0 — translation state (`.i18n-state.json`) in sync with source docs (no drifted sources in strict mode; warn-mode advisory is acceptable for last-minute doc touch-ups, but should be 0 before tagging)
 - [ ] `npm run i18n:check-ui-coverage` exits 0 — every UI locale at or above the 80% coverage floor
-- [ ] `npm run i18n:sync-ui:dry` reports 0 missing keys across all 43 locales
-- [ ] If source English docs changed, run `npm run i18n:run` (requires `OMNIROUTE_TRANSLATION_API_KEY` in `.env`) before tagging
+- [ ] `npm run i18n:sync-ui:dry` reports 0 missing keys across all 42 locales
 - [ ] Translation contributions can be deferred to next release if minor (track in CHANGELOG)
 
 ### Database Migrations

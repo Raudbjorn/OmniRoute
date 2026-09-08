@@ -1,22 +1,4 @@
-/**
- * qodercli command resolution (#6263).
- *
- * Extracted from `qoderCli.ts` (frozen at the file-size baseline) so the
- * Windows-aware resolution logic can grow without bloating the transport module.
- *
- * The bare `"qodercli"` name does not resolve on Windows, where npm installs the
- * CLI as a `qodercli.cmd` wrapper under `%APPDATA%\npm` (a user-PATH directory)
- * that `spawn` cannot find with `shell:false` and an unenriched env. OmniRoute
- * already has a Windows-aware resolver for this exact tool in `cliRuntime.ts`, so
- * we reuse it: `getCliRuntimeStatus("qoder")` returns an absolute `.cmd`/`.exe`
- * `commandPath`, and `shouldUseShellForCommand()` tells us whether it needs cmd.exe.
- */
-import path from "path";
-import {
-  getCliRuntimeStatus,
-  getKnownToolPaths,
-  shouldUseShellForCommand,
-} from "@/shared/services/cliRuntime";
+import { getCliRuntimeStatus, getKnownToolPaths } from "@/shared/services/cliRuntime";
 
 export function getQoderCliCommand(): string {
   const explicit = String(process.env.CLI_QODER_BIN || "").trim();
@@ -47,15 +29,13 @@ export async function resolveQoderCliInvocation(
   explicitCommand?: string | null,
   deps: {
     getStatus?: typeof getCliRuntimeStatus;
-    shouldUseShell?: typeof shouldUseShellForCommand;
   } = {}
 ): Promise<QoderCliInvocation> {
   const explicit = String(explicitCommand || "").trim();
   const getStatus = deps.getStatus || getCliRuntimeStatus;
-  const shouldUseShell = deps.shouldUseShell || shouldUseShellForCommand;
   // Only the default path is cached; an explicit per-call command or an injected
   // resolver (tests) always resolves fresh and never touches the shared cache.
-  const cacheable = !explicit && !deps.getStatus && !deps.shouldUseShell;
+  const cacheable = !explicit && !deps.getStatus;
   const fallback = explicit || getQoderCliCommand();
 
   if (
@@ -77,16 +57,7 @@ export async function resolveQoderCliInvocation(
     /* fall back to the bare/explicit command — spawn will surface a real ENOENT */
   }
 
-  // On Windows, if explicit CLI_QODER_BIN / command is a bare binary name like "qodercli" or "qoder" (no path or extension),
-  // spawn(cmd, { shell: false }) will fail with ENOENT post Node CVE-2024-27980.
-  // Enabling shell: true for bare command names on win32 lets system PATH resolution find qodercli.cmd / qoder.cmd.
-  const useShell =
-    shouldUseShell(command) ||
-    (process.platform === "win32" &&
-      !path.isAbsolute(command) &&
-      !path.basename(command).includes("."));
-
-  const invocation: QoderCliInvocation = { command, useShell };
+  const invocation: QoderCliInvocation = { command, useShell: false };
   if (cacheable) {
     qoderInvocationCache = {
       ...invocation,
@@ -115,7 +86,7 @@ export function buildQoderCliNotFoundHint(runError: string): string {
     `Qoder CLI (qodercli) was not found on the OmniRoute host (${runError}).` +
     searchedHint +
     " Install it from https://qoder.com, or set CLI_QODER_BIN to the absolute path " +
-    "of the qodercli binary (e.g. %APPDATA%\\npm\\qodercli.cmd on Windows). " +
+    "of the qodercli binary. " +
     "PAT auth is driven through the local qodercli binary."
   );
 }

@@ -2,12 +2,12 @@
  * Pure-function tests for Adobe Firefly browser login helpers.
  * (No Playwright launch — that path is integration-only.)
  */
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 import {
+  accountLabelFromAdobeJwt,
   adobeFireflyBackgroundUsesHeadlessChrome,
   adobeFireflyBrowserSessionKey,
-  accountLabelFromAdobeJwt,
   buildAdobeFireflyBrowserArgs,
   buildAdobeFireflyCookieHeader,
   clampAdobeFireflyLoginTimeout,
@@ -17,9 +17,9 @@ import {
   filterAdobeBrowserCookies,
   filterSeedCookiesForWarm,
   isAdobeRiskCookieName,
+  killProcessTree,
   resolveAdobeAccountLabel,
   resolveSystemBrowserExecutable,
-  killProcessTree,
 } from "../../open-sse/services/adobeFireflyBrowserLogin.ts";
 
 test("clampAdobeFireflyLoginTimeout defaults and clamps", () => {
@@ -261,7 +261,11 @@ test("killProcessTree on Linux targets process group (-pid) with SIGTERM and sch
   assert.equal(killedSignals.length, 1, "expected immediate SIGTERM call to process group");
   assert.equal(killedSignals[0].pid, -54321, "Linux must target process group with negative PID");
   assert.equal(killedSignals[0].signal, "SIGTERM");
-  assert.equal(procKillCalled, false, "should not call direct child.kill when process group kill succeeds");
+  assert.equal(
+    procKillCalled,
+    false,
+    "should not call direct child.kill when process group kill succeeds"
+  );
 });
 
 test("killProcessTree falls back to child.kill on Linux when process group kill fails", () => {
@@ -310,42 +314,9 @@ test("killProcessTree ignores self PID and parent PID to prevent killing backend
   }
 });
 
-test("killProcessTree on win32 uses taskkill /pid <pid> /T /F with detached and windowsHide", () => {
-  const spawnCalls: Array<{ cmd: string; args: readonly string[]; opts: unknown }> = [];
-  let unrefCalled = false;
-  const mockSpawn = ((cmd: string, args: readonly string[], opts: unknown) => {
-    spawnCalls.push({ cmd, args, opts });
-    return {
-      unref: () => {
-        unrefCalled = true;
-      },
-    };
-  }) as unknown as typeof import("node:child_process").spawn;
-
-  const fakeChild = {
-    pid: 7788,
-    kill: () => true,
-  };
-
-  killProcessTree(fakeChild, {
-    platform: "win32",
-    spawnFn: mockSpawn,
-  });
-
-  assert.equal(spawnCalls.length, 1);
-  assert.equal(spawnCalls[0].cmd, "taskkill");
-  assert.deepEqual(spawnCalls[0].args, ["/pid", "7788", "/T", "/F"]);
-  const opts = spawnCalls[0].opts as { windowsHide?: boolean; detached?: boolean };
-  assert.equal(opts.windowsHide, true);
-  assert.equal(opts.detached, true);
-  assert.equal(unrefCalled, true);
-});
-
 test("killProcessTree handles null / undefined / pid-less gracefully without throwing", () => {
   assert.doesNotThrow(() => killProcessTree(null));
   assert.doesNotThrow(() => killProcessTree(undefined));
   assert.doesNotThrow(() => killProcessTree({}));
   assert.doesNotThrow(() => killProcessTree({ pid: undefined }));
 });
-
-

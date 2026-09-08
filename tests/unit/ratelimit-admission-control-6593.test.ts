@@ -191,13 +191,29 @@ test("requestQueue.executionMaxWaitMs defaults to a 10-minute backstop, separate
   );
 });
 
-test("#6593 zai-web receives a provider-scoped 60s scheduling budget", () => {
+test("#6593 zai-web receives a provider-scoped 60s scheduling budget and long-context providers receive 120s floor", () => {
   assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("openai", 15_000), 15_000);
   assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("zai-web", 15_000), 60_000);
   assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("ZAI-WEB", 90_000), 90_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("opencode-go", 15_000), 120_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("opencode", 15_000), 120_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs(" OPENCODE-GO ", 15_000), 120_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("devin-desktop", 15_000), 120_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("DEVIN-DESKTOP", 15_000), 120_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("windsurf", 15_000), 120_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("postman-agent", 15_000), 120_000);
+  // Null/undefined safety
+  assert.equal(
+    rateLimitManager.resolveRequestQueueMaxWaitMs(undefined as unknown as string, 15_000),
+    15_000
+  );
+  assert.equal(
+    rateLimitManager.resolveRequestQueueMaxWaitMs(null as unknown as string, 15_000),
+    15_000
+  );
 });
 
-test("#6593 connection maxWaitMs override takes priority over the zai-web scheduling budget", () => {
+test("#6593 connection maxWaitMs override takes priority over the zai-web scheduling budget and long-context floor", () => {
   rateLimitManager.refreshConnectionRateLimits("conn-maxwait-override", { maxWaitMs: 45_000 });
   try {
     // Non-special provider: override wins over the passed-in configured default.
@@ -208,6 +224,11 @@ test("#6593 connection maxWaitMs override takes priority over the zai-web schedu
     // zai-web: override wins over its hardcoded 60s floor too.
     assert.equal(
       rateLimitManager.resolveRequestQueueMaxWaitMs("zai-web", 15_000, "conn-maxwait-override"),
+      45_000
+    );
+    // opencode-go: override wins over the 120s floor.
+    assert.equal(
+      rateLimitManager.resolveRequestQueueMaxWaitMs("opencode-go", 15_000, "conn-maxwait-override"),
       45_000
     );
   } finally {
@@ -237,6 +258,18 @@ test("#6593 a maxWaitMs override of 0 is treated as no override", () => {
   } finally {
     rateLimitManager.refreshConnectionRateLimits("conn-zero-maxwait-override", null);
   }
+});
+
+test("maxai receives a provider-scoped 5min execution budget (slow reasoning models)", () => {
+  // The default 15s Bottleneck expiration kills MaxAI reasoning turns (30s-min+)
+  // mid-think; maxai (and its mx alias) floor at 300s so they complete.
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("maxai", 15_000), 300_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("MaxAI", 15_000), 300_000);
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("mx", 15_000), 300_000);
+  // A larger configured value is preserved (floor never lowers it).
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("maxai", 600_000), 600_000);
+  // Other providers are unaffected.
+  assert.equal(rateLimitManager.resolveRequestQueueMaxWaitMs("openai", 15_000), 15_000);
 });
 
 test("#6593 DEFAULT_REQUEST_QUEUE_MAX_DEPTH defaults to 0 (disabled) absent an env override", () => {

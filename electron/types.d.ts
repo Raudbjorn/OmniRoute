@@ -11,7 +11,7 @@
 export interface AppInfo {
   name: string;
   version: string;
-  platform: "win32" | "darwin" | "linux";
+  platform: "linux";
   isDev: boolean;
   port: number;
   /** Set when Remote Server Mode is active (tray → Remote Server → Connect…). */
@@ -43,7 +43,7 @@ export interface ElectronAPI {
 
   // ── Static Properties ──────────────────────────────────
   isElectron: boolean;
-  platform: "win32" | "darwin" | "linux";
+  platform: "linux";
 }
 
 declare global {

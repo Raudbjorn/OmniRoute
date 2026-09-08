@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { Card, Button, Input, Modal, CardSkeleton, SegmentedControl } from "@/shared/components";
+import { Button, Card, CardSkeleton, Input, Modal, SegmentedControl } from "@/shared/components";
 import Toggle from "@/shared/components/Toggle";
-import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { isPublicDisplayBaseUrl, useDisplayBaseUrl } from "@/shared/hooks";
+import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import A2ADashboardPage from "./components/A2ADashboard";
 import McpDashboardPage from "./components/MCPDashboard";
 import NotionSourceCard from "./components/NotionSourceCard";
@@ -52,7 +52,6 @@ type TailscaleTunnelStatus = {
   apiUrl: string | null;
   phase: TailscaleTunnelPhase;
   platform: string;
-  brewAvailable: boolean;
   lastError: string | null;
   pid: number | null;
 };
@@ -422,7 +421,7 @@ export default function APIPageClient({ machineId }: Readonly<APIPageClientProps
           return tunnelVisibility;
         }
 
-        setCloudEnabled(data.cloudEnabled || false);
+        setCloudEnabled(data.cloudEnabled);
         if (typeof data.cloudConfigured === "boolean") {
           setCloudConfigured(data.cloudConfigured);
         }
@@ -1627,7 +1626,7 @@ export default function APIPageClient({ machineId }: Readonly<APIPageClientProps
                       )}
                     </p>
                   )}
-                  {tailscaleStatus?.installed && tailscaleStatus?.platform !== "win32" && (
+                  {tailscaleStatus?.installed && (
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-text-muted">
                         {translateOrFallback(

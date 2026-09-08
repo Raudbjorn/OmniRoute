@@ -1,26 +1,30 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { totalmem } from "node:os";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { platform, totalmem } from "node:os";
-import { t } from "../i18n.mjs";
-import { writePidFile, cleanupPidFile, waitForServer } from "../utils/pid.mjs";
-import { ServerSupervisor, detectMitmCrash } from "../runtime/processSupervisor.mjs";
 import { isTermux } from "../../../scripts/build/postinstallSupport.mjs";
 import {
-  ensureAndroidCacheDir,
-  isFatalInstrumentationHookFailure,
-  formatAndroidInstrumentationFailureHint,
-} from "../utils/ensureAndroidCacheDir.mjs";
-import { resolveServerHost, resolveExposureWarning } from "../utils/serverHost.mjs";
-import {
-  resolveMaxOldSpaceMb,
-  calibrateHeapFallbackMb,
-  buildServerNodeOptions,
   buildNodeHeapArgs,
+  buildServerNodeOptions,
+  calibrateHeapFallbackMb,
+  resolveMaxOldSpaceMb,
 } from "../../../scripts/build/runtime-env.mjs";
 import { resolveTlsOptions } from "../../../scripts/dev/tls-options.mjs";
+import { t } from "../i18n.mjs";
+import {
+  BUN_PRELOAD_PATH,
+  ServerSupervisor,
+  detectMitmCrash,
+} from "../runtime/processSupervisor.mjs";
 import { startDetachedTray, validateTrayOptions } from "../tray/detachedTray.mjs";
+import {
+  ensureAndroidCacheDir,
+  formatAndroidInstrumentationFailureHint,
+  isFatalInstrumentationHookFailure,
+} from "../utils/ensureAndroidCacheDir.mjs";
+import { cleanupPidFile, waitForServer, writePidFile } from "../utils/pid.mjs";
+import { resolveExposureWarning, resolveServerHost } from "../utils/serverHost.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const _pkg = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "package.json"), "utf8"));
@@ -220,9 +224,7 @@ export async function runServe(opts = {}) {
       "  Or run: \x1b[36momniroute runtime repair\x1b[0m" +
         "  (rebuilds into a user-writable runtime; works without a C++ toolchain)"
     );
-    if (platform() === "darwin") {
-      console.error("  If build tools are missing: xcode-select --install");
-    }
+
     process.exit(1);
   }
 
@@ -247,9 +249,7 @@ export async function runServe(opts = {}) {
     PORT: String(dashboardPort),
     DASHBOARD_PORT: String(dashboardPort),
     API_PORT: String(apiPort),
-    // #10492: HOSTNAME is standard shell state on Unix-like systems, not an
-    // OmniRoute bind setting. The resolver only keeps its legacy meaning on
-    // Windows; OMNIROUTE_SERVER_HOST is the cross-platform explicit setting.
+
     HOSTNAME: resolveServerHost(),
     NODE_ENV: "production",
     // #5238: preserve a user-set NODE_OPTIONS (incl. their own
@@ -306,7 +306,7 @@ function runDaemon(serverJs, env, memoryLimit, dashboardPort, apiPort) {
     process.versions.bun ? process.execPath : "node",
     [
       ...(process.versions.bun
-        ? ["--preload", join(APP_DIR, "open-sse/utils/setupPolyfill.ts")]
+        ? ["--preload", BUN_PRELOAD_PATH]
         : buildNodeHeapArgs(process.env, memoryLimit)),
       serverJs,
     ],
@@ -331,7 +331,7 @@ function runWithoutRecovery(serverJs, env, memoryLimit, dashboardPort, apiPort, 
     process.versions.bun ? process.execPath : "node",
     [
       ...(process.versions.bun
-        ? ["--preload", join(APP_DIR, "open-sse/utils/setupPolyfill.ts")]
+        ? ["--preload", BUN_PRELOAD_PATH]
         : buildNodeHeapArgs(process.env, memoryLimit)),
       serverJs,
     ],
@@ -423,7 +423,9 @@ async function runWithSupervisor(
       if (detectMitmCrash(crashLog)) {
         try {
           const PROJECT_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
-          const { updateSettings } = await import(pathToFileURL(join(PROJECT_ROOT, "src/lib/db/settings.ts")).href);
+          const { updateSettings } = await import(
+            pathToFileURL(join(PROJECT_ROOT, "src/lib/db/settings.ts")).href
+          );
           updateSettings({ mitmEnabled: false });
         } catch {}
         return "disable-mitm-and-retry";

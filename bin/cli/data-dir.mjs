@@ -14,7 +14,7 @@ function safeHomeDir() {
   try {
     return os.homedir();
   } catch {
-    return process.env.HOME || process.env.USERPROFILE || os.tmpdir();
+    return process.env.HOME || os.tmpdir();
   }
 }
 
@@ -34,11 +34,6 @@ export function getDefaultDataDir() {
     } catch {
       // Ignore stat errors and continue to the platform default.
     }
-  }
-
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
-    return path.join(appData, APP_NAME);
   }
 
   const xdgConfigHome = normalizeConfiguredPath(process.env.XDG_CONFIG_HOME);
