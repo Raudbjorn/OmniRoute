@@ -330,6 +330,7 @@ const LOBE_PROVIDER_ALIASES = {
   cerebras: "Cerebras",
   "chatgpt-web": "OpenAI",
   "chatgpt-web-codex": "OpenAI",
+  "chatgpt-session": "OpenAI",
   claude: "ClaudeCode",
   "claude-web": "Claude",
   cline: "Cline",

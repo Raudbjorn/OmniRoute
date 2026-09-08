@@ -47,15 +47,16 @@ import {
   fetchModelSyncInternal,
   getModelSyncInternalBaseUrl,
 } from "@/shared/services/modelSyncScheduler";
-// Dynamically imported below, inside the one `provider === "chatgpt-web-codex"`
-// branch that needs it: this module's transitive chain pulls in tiktoken's
-// WASM tokenizer, which Turbopack dev mode fails to resolve for this graph
-// even with `tiktoken` listed in serverExternalPackages (the standalone
-// Node require works fine; only Turbopack's bundling of this import path
-// doesn't). A static top-level import evaluates that whole chain on EVERY
-// /api/providers request regardless of provider, turning an unrelated-
-// provider bug into a route-wide 500. Loading it lazily, only when actually
-// needed, avoids paying that cost (and that risk) on the common path.
+import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
+import { usesChatGptBrowserSessionCredentials } from "@/shared/constants/chatgptWebCodex";
+// finalizeValidatedChatGptWebCodexSecrets is dynamically imported below, inside the one
+// `provider === "chatgpt-web-codex"` branch that needs it: this module's transitive chain
+// pulls in tiktoken's WASM tokenizer, which Turbopack dev mode fails to resolve for this
+// graph even with `tiktoken` listed in serverExternalPackages (the standalone Node require
+// works fine; only Turbopack's bundling of this import path doesn't). A static top-level
+// import evaluates that whole chain on EVERY /api/providers request regardless of provider,
+// turning an unrelated-provider bug into a route-wide 500. Loading it lazily, only when
+// actually needed, avoids paying that cost (and that risk) on the common path.
 import { isAutoFetchModelsEnabled } from "@/lib/providerModels/modelDiscovery";
 import { testSingleConnection } from "./[id]/test/route";
 import { rejectRetiredCommonChatGptWebProvider } from "@/lib/providers/chatgptWebRetirementResponse";
@@ -206,7 +207,7 @@ export async function POST(request: Request) {
       providerSpecificData = normalizeQoderPatProviderData(providerSpecificData || {});
     }
 
-    if (provider === "chatgpt-web-codex") {
+    if (usesChatGptBrowserSessionCredentials(provider)) {
       const validationId =
         providerSpecificData && typeof providerSpecificData.validationId === "string"
           ? providerSpecificData.validationId
@@ -221,10 +222,11 @@ export async function POST(request: Request) {
       } catch (error) {
         return NextResponse.json(
           {
-            error:
+            error: sanitizeErrorMessage(
               error instanceof Error
                 ? error.message
-                : "ChatGPT browser verification could not be completed.",
+                : "The browser session verification could not be completed."
+            ),
           },
           { status: 400 }
         );

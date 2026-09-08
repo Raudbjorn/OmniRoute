@@ -119,3 +119,39 @@ test("connection-level entries keep the pre-existing backoff behavior (no window
     `connection-level cooldown should follow minRetryCooldownMs (got ${remaining}ms)`
   );
 });
+
+for (const [provider, category] of [
+  ["ollama-local", "local"],
+  ["ollama", "local"],
+  ["lmstudio", "local"],
+  ["pollinations", "apikey"],
+  ["naga", "apikey"],
+  ["cloudflare-playground", "apikey"],
+  ["openai", "apikey"],
+  ["claude", "oauth"],
+  ["not-in-the-registry", "apikey"],
+] as const) {
+  test(`provider-level: ${provider} uses the ${category} profile`, (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
+    const profile = PROVIDER_PROFILES[category];
+    for (let i = 1; i < profile.providerFailureThreshold; i++) {
+      recordProviderCooldown(provider, undefined, settings);
+      assert.equal(isProviderInCooldown(provider, undefined, settings), false);
+      assert.equal(getRemainingCooldownMs(provider, undefined, settings), 0);
+    }
+    recordProviderCooldown(provider, undefined, settings);
+    assert.equal(isProviderInCooldown(provider, undefined, settings), true);
+    assert.equal(getRemainingCooldownMs(provider, undefined, settings), profile.providerCooldownMs);
+    t.mock.timers.tick(profile.providerCooldownMs);
+    assert.equal(isProviderInCooldown(provider, undefined, settings), false);
+    assert.equal(getRemainingCooldownMs(provider, undefined, settings), 0);
+
+    clearCooldownState();
+    for (let i = 1; i < profile.providerFailureThreshold; i++) {
+      recordProviderCooldown(provider, undefined, settings);
+    }
+    t.mock.timers.tick(profile.providerFailureWindowMs + 1);
+    recordProviderCooldown(provider, undefined, settings);
+    assert.equal(isProviderInCooldown(provider, undefined, settings), false);
+  });
+}

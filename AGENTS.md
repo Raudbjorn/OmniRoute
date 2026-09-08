@@ -26,6 +26,15 @@ before using this list; update it when an intentional fork decision changes.
 | Prior merge repairs         | Preserve malformed combo JSON handling in `src/lib/db/repositories/sqliteComboRepository.ts` and the `toFts5MatchQuery` export in `src/lib/memory/retrieval.ts`. Do not resurrect tests for removed `getKnownContextOverflow` APIs. Inspect commit `c9333a8b9` for the reasons.                                                      |
 | Publishing                  | A successful local build is not permission to publish. Some retained metadata still references other owners: Electron's publish target is upstream and the Rust workspace repository is the source fork. Review actual destinations when publication is requested; do not blanket-rewrite attribution links.                         |
 
+## Provider cooldown profiles
+
+The opt-in global Provider Cooldown (`PROVIDER_COOLDOWN_ENABLED`, default off)
+uses the `providerFailureThreshold`, `providerFailureWindowMs`, and
+`providerCooldownMs` fields in `PROVIDER_PROFILES` for provider-level entries in
+`open-sse/services/providerCooldownTracker.ts`. These are separate from the live
+provider circuit breaker's thresholds. Preserve connection-level exponential
+backoff and success resets. See [Resilience Guide](./docs/architecture/RESILIENCE_GUIDE.md).
+
 ## Repository map
 
 ```text

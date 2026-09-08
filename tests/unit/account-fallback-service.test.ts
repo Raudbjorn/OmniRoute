@@ -1392,11 +1392,29 @@ test("G-02: X-Omni-Fallback-Hint connection_cooldown header lookup is case-insen
   assert.equal(result.cooldownMs, 5_000);
 });
 
-test("G-02: hint header is ignored for non-503 status codes", () => {
+test("G-02: hint header is ignored for non-503/429 status codes", () => {
   const headers = new Headers({ "X-Omni-Fallback-Hint": "connection_cooldown" });
   // 502 should NOT trigger the hint path even if the header is present
   const result = checkFallbackError(502, "bad gateway", 0, null, "9router", headers);
   assert.equal(result.skipProviderBreaker, undefined); // normal path, no skip flag
+});
+
+// A provider-specific skip signal (e.g. a ChatGPT browser-session usage limit) can arrive on a
+// 429, not just a 503 — without honoring the hint there too, a repeated account-scoped 429 would
+// trip the whole-provider circuit breaker instead of just cooling down the one connection.
+test("G-02: X-Omni-Fallback-Hint connection_cooldown on 429 also returns 5s cooldown + skipProviderBreaker", () => {
+  const headers = new Headers({ "X-Omni-Fallback-Hint": "connection_cooldown" });
+  const result = checkFallbackError(
+    429,
+    "usage limit reached",
+    0,
+    null,
+    "chatgpt-session",
+    headers
+  );
+  assert.equal(result.shouldFallback, true);
+  assert.equal(result.cooldownMs, 5_000);
+  assert.equal(result.skipProviderBreaker, true);
 });
 
 test("G-02: 503 without hint header follows normal circuit-breaker path", () => {
@@ -2024,7 +2042,7 @@ test("checkFallbackError: compatible node empty wallet without billing-suspend p
     "You have insufficient balance, please recharge your account",
     0,
     null,
-    MOONSHOT_COMPAT,
+    MOONSHOT_COMPAT
   );
   assert.equal(result.creditsExhausted, true);
   assert.equal(result.reason, RateLimitReason.QUOTA_EXHAUSTED);
@@ -2038,11 +2056,22 @@ test("isDailyQuotaExhausted detects organization TPD rate limit", () => {
 
 test("checkFallbackError: TPD with node clock uses that instant, not host midnight", () => {
   const now = Date.parse("2026-09-02T07:30:00Z");
-  const result = checkFallbackError(429, MOONSHOT_TPD, 0, null, MOONSHOT_COMPAT, null, null, null, null, {
-    timezone: "Asia/Shanghai",
-    hour: 0,
-    nowMs: now,
-  });
+  const result = checkFallbackError(
+    429,
+    MOONSHOT_TPD,
+    0,
+    null,
+    MOONSHOT_COMPAT,
+    null,
+    null,
+    null,
+    null,
+    {
+      timezone: "Asia/Shanghai",
+      hour: 0,
+      nowMs: now,
+    }
+  );
   assert.equal(result.dailyQuotaExhausted, true);
   assert.equal(result.cooldownMs, Date.parse("2026-09-02T16:00:00Z") - now);
   assert.equal(result.reason, RateLimitReason.QUOTA_EXHAUSTED);
