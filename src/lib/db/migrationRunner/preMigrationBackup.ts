@@ -2,8 +2,8 @@ import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 
-import type { SqliteAdapter } from "../adapters/types";
 import { tryOpenSync } from "../adapters/driverFactory";
+import type { SqliteAdapter } from "../adapters/types";
 import { migrationConsole as console } from "./logger";
 
 export type PreMigrationBackupReceipt = {
@@ -18,9 +18,7 @@ function fsyncDirectoryEntry(directory: string): void {
     fs.fsyncSync(fd);
   } catch (error: unknown) {
     const code = (error as NodeJS.ErrnoException | null)?.code;
-    const windowsDirectoryHandleUnsupported =
-      process.platform === "win32" &&
-      (code === "EACCES" || code === "EPERM" || code === "EISDIR" || code === "EINVAL");
+    const windowsDirectoryHandleUnsupported = false;
     if (!windowsDirectoryHandleUnsupported) throw error;
   } finally {
     if (fd !== null) fs.closeSync(fd);
@@ -82,9 +80,6 @@ function publishSnapshotWithoutOverwrite(tempPath: string, destination: string):
   fs.linkSync(tempPath, destination);
   const publishedFd = fs.openSync(destination, "r+");
   try {
-    // Flush through the published name as well as the already-fsynced temp handle.
-    // On Windows this maps to FlushFileBuffers and is the strongest file-level
-    // durability proof available when directory handles are unsupported by Node.
     fs.fsyncSync(publishedFd);
   } finally {
     fs.closeSync(publishedFd);
@@ -173,8 +168,6 @@ function cleanupOwnedSnapshotTemp(tempDir: string | null, tempPath: string | nul
   if (!tempDir || !fs.existsSync(tempDir)) return;
 
   try {
-    // `tempDir` comes only from mkdtempSync below. Removing that exact owned directory
-    // lets Node retry Windows/AV EBUSY and EPERM failures without touching canonical backups.
     fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 25 });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

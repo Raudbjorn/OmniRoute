@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { describe, it } from "node:test";
 import {
   extractPreservedBlocks,
   restorePreservedBlocks,
@@ -25,14 +25,6 @@ describe("preservation ReDoS guard (#4795)", () => {
     );
     // The pathological input is not valid inline math, so it stays untouched.
     assert.equal(text, evil, "non-math text must be returned unchanged");
-  });
-
-  it("does not hang on Windows-path-style payloads with backslashes after a `$`", () => {
-    const evil =
-      "$C:\\Users\\Alpha\\Net\\DESKTOP\\" + "sub\\".repeat(120) + "no-closing-dollar";
-    const start = Date.now();
-    extractPreservedBlocks(evil);
-    assert.ok(Date.now() - start < 1000, "Windows-path payload must resolve quickly");
   });
 
   it("still preserves legitimate inline math", () => {

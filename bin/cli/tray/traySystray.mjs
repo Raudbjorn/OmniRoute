@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { isAutostartEnabled } from "./autostart.mjs";
 
@@ -9,18 +9,11 @@ const MENU_INDEX = { STATUS: 0, DASHBOARD: 1, LOGS: 2, AUTOSTART: 3, QUIT: 4 };
 
 export function isTraySupported() {
   const p = process.platform;
-  if (!["darwin", "linux", "win32"].includes(p)) return false;
+  if (!["linux"].includes(p)) return false;
   if (p === "linux" && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) return false;
   return true;
 }
 
-// systray2 is NOT a static dependency — it is lazily installed into
-// ~/.omniroute/runtime by trayRuntime.ts (loadSystray). The previous inline
-// loader called `require("module")`, which throws `ReferenceError: require is
-// not defined` in this ESM file (package "type":"module"); the throw was
-// silently swallowed, so the tray never appeared on macOS/Linux with no error
-// printed (#4605, regressed in v3.8.34). Delegate to the runtime loader, which
-// resolves systray2 from the runtime dir and surfaces install/import failures.
 async function loadSystray2() {
   const { loadSystray } = await import("../runtime/trayRuntime.ts");
   return loadSystray();
@@ -58,9 +51,7 @@ export async function initSystrayUnix(
     tray = new SysTray({
       menu: {
         icon: getIconBase64(),
-        // isTemplateIcon must be false: icon.png is a full-color RGBA logo, and
-        // macOS template mode uses only the alpha channel → a solid white square
-        // (the icon looked "missing" even when the tray loaded). (PR #1080)
+
         isTemplateIcon: false,
         title: "",
         tooltip: `OmniRoute — port ${port}`,
@@ -118,10 +109,6 @@ export function getSystrayChildPid(tray) {
 
 export function killSystrayUnix(tray) {
   try {
-    // systray2.kill(false) closes the IPC channel but leaves the Go tray binary
-    // subprocess running, which keeps an orphan NSStatusItem on macOS and blocks
-    // a freshly spawned tray (e.g. on respawn / hide-to-tray) from registering.
-    // SIGKILL the child PID directly first, then close IPC.
     const pid = getSystrayChildPid(tray);
     if (pid) {
       try {

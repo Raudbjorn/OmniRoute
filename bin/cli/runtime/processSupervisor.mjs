@@ -1,20 +1,25 @@
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writePidFile, cleanupPidFile, killAllSubprocesses, isPidRunning } from "../utils/pid.mjs";
+import { buildNodeRuntimeArgs } from "../../../scripts/build/runtime-env.mjs";
 import {
-  RESTART_RESET_MS,
-  DEFAULT_MAX_RESTARTS,
-  shouldExitInsteadOfRestart,
+  formatAndroidInstrumentationFailureHint,
+  isFatalInstrumentationHookFailure,
+} from "../utils/ensureAndroidCacheDir.mjs";
+import {
+  cleanupPidFile,
+  isPidRunning,
+  killAllSubprocesses,
+  stopProcessGracefully,
+  writePidFile,
+} from "../utils/pid.mjs";
+import {
   computeRestartDelayMs,
+  DEFAULT_MAX_RESTARTS,
+  RESTART_RESET_MS,
+  shouldExitInsteadOfRestart,
   waitUntilPortFree,
 } from "./supervisorPolicy.mjs";
-import { buildNodeRuntimeArgs } from "../../../scripts/build/runtime-env.mjs";
-import { stopProcessGracefully } from "../../../src/shared/platform/windowsProcess.ts";
-import {
-  isFatalInstrumentationHookFailure,
-  formatAndroidInstrumentationFailureHint,
-} from "../utils/ensureAndroidCacheDir.mjs";
 
 const CRASH_LOG_LINES = 50;
 
@@ -63,17 +68,7 @@ export class ServerSupervisor {
     this.instrumentationFailureHintPrinted = false;
 
     const showLog = process.env.OMNIROUTE_SHOW_LOG === "1";
-    // #6321: stdout used to be discarded (`"ignore"`) whenever `--log`/OMNIROUTE_SHOW_LOG
-    // wasn't set (the default) — any debug/pino output written to stdout vanished
-    // silently, so a boot that never becomes ready looked like a dead hang with zero
-    // output even at APP_LOG_LEVEL=debug. Pipe stdout too and buffer it alongside
-    // stderr so a readiness timeout can surface what the child actually printed.
-    // #9156: always spawn via process.execPath (absolute path to the running
-    // runtime — node or bun). Bare "node" is unresolvable under macOS launchd's
-    // minimal PATH; #9761's Bun ternary accidentally regressed the Node branch.
-    // Node args come from buildNodeRuntimeArgs (#9209 IPv4-first DNS + #5238
-    // heap flag handling); the Bun branch keeps #9761's polyfill preload —
-    // Bun does not accept the Node-only flags.
+
     this.child = spawn(process.execPath, buildServerSpawnArgs(this.serverPath, this.memoryLimit), {
       cwd: dirname(this.serverPath),
       env: this.env,
@@ -197,12 +192,7 @@ export class ServerSupervisor {
   stop() {
     this.isShuttingDown = true;
     if (this.child?.pid) {
-      // #8045: on win32, process.kill(pid, "SIGTERM") unconditionally force-terminates
-      // the target — it is never a real, interceptable signal there. The child already
-      // receives the real CTRL_C_EVENT/CTRL_CLOSE_EVENT independently (it shares the
-      // console) and runs its own async graceful shutdown (WAL checkpoint). Sending
-      // SIGTERM immediately on win32 races and beats that cleanup. Fire-and-forget:
-      // stop() itself stays sync so callers keep their existing control flow.
+      // Allow the server to finish its graceful shutdown before escalation.
       void stopProcessGracefully({ pid: this.child.pid, timeoutMs: 5000, isPidRunning });
     }
     killAllSubprocesses();

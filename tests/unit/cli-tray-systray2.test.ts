@@ -7,11 +7,11 @@
 // pure helpers that drive the swap: the package + version pin and the
 // chmod helper's behavior on a synthetic binary tree.
 
-import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync, statSync, chmodSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import test from "node:test";
 import {
   SYSTRAY_PACKAGE,
   SYSTRAY_VERSION,
@@ -26,16 +26,16 @@ test("systray2 is pinned to a 2.x version (PR #1080 fix)", () => {
   assert.match(SYSTRAY_VERSION, /^2\./, `expected systray2@2.x, got ${SYSTRAY_VERSION}`);
 });
 
-test("resolveSystrayBinName returns *_release name on all platforms (#8609)", () => {
-  assert.equal(resolveSystrayBinName("win32"), "tray_windows_release.exe");
-  assert.equal(resolveSystrayBinName("darwin"), "tray_darwin_release");
+test("resolveSystrayBinName rejects unsupported platforms and resolves the Linux binary", () => {
+  assert.equal(resolveSystrayBinName("win32"), null);
+  assert.equal(resolveSystrayBinName("darwin"), null);
   assert.equal(resolveSystrayBinName("linux"), "tray_linux_release");
 });
 
 test("chmodSystrayBinAt sets +x on the bundled tray binary when present", () => {
   const root = mkdtempSync(join(tmpdir(), "omniroute-systray-bin-"));
   try {
-    const platform = process.platform === "win32" ? "linux" : process.platform;
+    const platform = process.platform;
     const binName = resolveSystrayBinName(platform)!;
     const binDir = join(root, "node_modules", "systray2", "traybin");
     mkdirSync(binDir, { recursive: true });
@@ -56,17 +56,6 @@ test("chmodSystrayBinAt is a no-op when the binary doesn't exist", () => {
   const root = mkdtempSync(join(tmpdir(), "omniroute-systray-bin-"));
   try {
     const result = chmodSystrayBinAt(root, "linux");
-    assert.equal(result.changed, false);
-    assert.equal(result.reason, "missing");
-  } finally {
-    rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  }
-});
-
-test("chmodSystrayBinAt returns missing on win32 when binary is absent (#8609)", () => {
-  const root = mkdtempSync(join(tmpdir(), "omniroute-systray-bin-"));
-  try {
-    const result = chmodSystrayBinAt(root, "win32");
     assert.equal(result.changed, false);
     assert.equal(result.reason, "missing");
   } finally {

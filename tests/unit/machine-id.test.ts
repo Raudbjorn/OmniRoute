@@ -1,7 +1,7 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import path from "node:path";
 import { createRequire, syncBuiltinESMExports } from "node:module";
+import path from "node:path";
+import test from "node:test";
 import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
@@ -55,31 +55,6 @@ test.afterEach(() => {
   syncBuiltinESMExports();
 });
 
-test("machineId: reads the Windows MachineGuid via REG.exe when available", async () => {
-  setPlatform("win32");
-  process.env.SystemRoot = "C:\\Windows";
-
-  fs.existsSync = (filePath) => filePath === "C:\\Windows\\System32\\REG.exe";
-  childProcess.execFileSync = (command, args, options) => {
-    assert.equal(command, "C:\\Windows\\System32\\REG.exe");
-    assert.deepEqual(args, [
-      "QUERY",
-      "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography",
-      "/v",
-      "MachineGuid",
-    ]);
-    assert.equal(options.encoding, "utf8");
-    return "MachineGuid    REG_SZ    ABCDEF12-3456-7890";
-  };
-  childProcess.execSync = () => {
-    throw new Error("hostname fallback should not run");
-  };
-  syncBuiltinESMExports();
-
-  const machineId = await loadMachineIdModule("windows-guid");
-  assert.equal(await machineId.getRawMachineId(), "abcdef12-3456-7890");
-});
-
 test("machineId: falls back to Linux machine-id files before hostname", async () => {
   setPlatform("linux");
 
@@ -99,21 +74,6 @@ test("machineId: falls back to Linux machine-id files before hostname", async ()
 
   const machineId = await loadMachineIdModule("linux-file");
   assert.equal(await machineId.getRawMachineId(), "linux-machine-id");
-});
-
-test("machineId: reads the macOS IOPlatformUUID when ioreg is available", async () => {
-  setPlatform("darwin");
-
-  fs.existsSync = () => false;
-  childProcess.execSync = (command, options) => {
-    assert.equal(command, "ioreg -rd1 -c IOPlatformExpertDevice");
-    assert.equal(options.encoding, "utf8");
-    return '"IOPlatformUUID" = "ABCDEF12-3456-7890-ABCD-EF1234567890"\n';
-  };
-  syncBuiltinESMExports();
-
-  const machineId = await loadMachineIdModule("macos-ioreg");
-  assert.equal(await machineId.getRawMachineId(), "abcdef12-3456-7890-abcd-ef1234567890");
 });
 
 test("machineId: hashes consistently by salt and reports browser/server mode", async () => {

@@ -1,20 +1,3 @@
-/**
- * Container runtime providers for the OmniRoute skill sandbox.
- *
- * The sandbox historically hardcoded the `docker` CLI. This module abstracts
- * the container runtime so OmniRoute can pick the most performant / native
- * runtime available on each host:
- *
- *   - macOS:  Apple Container (`container` CLI)  >  OrbStack (docker shim)  >  Podman  >  Docker
- *   - Windows: WSL Container (`wslc` CLI)       >  Docker Desktop          >  Podman
- *   - Linux:   Podman (rootless, daemonless)    >  Docker
- *
- * The user can override the auto-detected choice with `SKILLS_SANDBOX_RUNTIME`
- * (`auto | docker | apple | wsl | orbstack | podman`). Each provider maps the
- * sandbox's intent (resource caps, network isolation, capability drops,
- * read-only fs, tmpfs workspaces) onto the runtime's native flag set.
- */
-
 import { createRequire } from "module";
 import os from "os";
 
@@ -50,7 +33,7 @@ export interface ContainerProvider {
     image: string,
     command: string[],
     sandboxId: string,
-    config: SandboxConfig,
+    config: SandboxConfig
   ): ResolvedContainerCommand;
   /** Build a kill/stop command for a running container. */
   killCommand: string;
@@ -63,14 +46,8 @@ export interface ContainerProvider {
 
 const SANDBOX_NAME = (sandboxId: string) => `omniroute-${sandboxId}`;
 
-/**
- * Probe whether a CLI binary exists on PATH.
- * Uses `where` on Windows, `which` on *nix — both via spawnSync so existing
- * test mocks on `spawn` (but not `spawnSync`) are not disturbed.
- */
 function probeCommand(binary: string): boolean {
-  const args =
-    process.platform === "win32" ? ["where", binary] : ["which", binary];
+  const args = ["which", binary];
   const r = childProcess.spawnSync(args[0], args.slice(1), {
     encoding: "utf8",
     stdio: "ignore",
@@ -107,7 +84,7 @@ class DockerProvider implements ContainerProvider {
     image: string,
     command: string[],
     sandboxId: string,
-    config: SandboxConfig,
+    config: SandboxConfig
   ): ResolvedContainerCommand {
     const args = [
       "run",
@@ -147,10 +124,6 @@ class DockerProvider implements ContainerProvider {
   }
 }
 
-// ----------------------------------------------------------------
-//  AppleContainerProvider  (native Apple Container on macOS)
-// ----------------------------------------------------------------
-
 class AppleContainerProvider implements ContainerProvider {
   readonly id: SandboxRuntimeId = "apple";
   readonly displayName = "Apple Container";
@@ -164,7 +137,7 @@ class AppleContainerProvider implements ContainerProvider {
     image: string,
     command: string[],
     sandboxId: string,
-    config: SandboxConfig,
+    config: SandboxConfig
   ): ResolvedContainerCommand {
     const args = [
       "run",
@@ -202,10 +175,6 @@ class AppleContainerProvider implements ContainerProvider {
   }
 }
 
-// ----------------------------------------------------------------
-//  WslContainerProvider  (WSL 2 container CLI on Windows)
-// ----------------------------------------------------------------
-
 class WslContainerProvider implements ContainerProvider {
   readonly id: SandboxRuntimeId = "wsl";
   readonly displayName = "WSL Container";
@@ -219,7 +188,7 @@ class WslContainerProvider implements ContainerProvider {
     image: string,
     command: string[],
     sandboxId: string,
-    config: SandboxConfig,
+    config: SandboxConfig
   ): ResolvedContainerCommand {
     const args = [
       "run",
@@ -253,10 +222,6 @@ class WslContainerProvider implements ContainerProvider {
   }
 }
 
-// ----------------------------------------------------------------
-//  OrbStackProvider  (high-perf Linux VM on macOS)
-// ----------------------------------------------------------------
-
 class OrbStackProvider implements ContainerProvider {
   readonly id: SandboxRuntimeId = "orbstack";
   readonly displayName = "OrbStack";
@@ -270,7 +235,7 @@ class OrbStackProvider implements ContainerProvider {
     image: string,
     command: string[],
     sandboxId: string,
-    config: SandboxConfig,
+    config: SandboxConfig
   ): ResolvedContainerCommand {
     // OrbStack wraps Docker inside a Linux VM.  We invoke the `orbstack`
     // binary which shims `docker` transparently.
@@ -323,7 +288,7 @@ class PodmanProvider implements ContainerProvider {
     image: string,
     command: string[],
     sandboxId: string,
-    config: SandboxConfig,
+    config: SandboxConfig
   ): ResolvedContainerCommand {
     const args = [
       "run",
@@ -374,20 +339,12 @@ export const ALL_PROVIDERS: ContainerProvider[] = [
 ];
 
 export const PROVIDER_BY_ID = new Map<SandboxRuntimeId, ContainerProvider>(
-  ALL_PROVIDERS.map((p) => [p.id, p]),
+  ALL_PROVIDERS.map((p) => [p.id, p])
 );
 
 /** Priority order for auto-detection on each platform. */
 export function platformPriority(): SandboxRuntimeId[] {
   switch (os.platform()) {
-    case "darwin":
-      // Apple Container is the native micro-VM runtime on Apple Silicon —
-      // fastest startup, lowest overhead.  OrbStack provides a Docker shim
-      // inside a tuned Linux VM; better than stock Docker Desktop.
-      return ["apple", "orbstack", "podman", "docker"];
-    case "win32":
-      // WSL Container CLI (wslc.exe) is Windows-native via WSL 2.
-      return ["wsl", "docker", "podman"];
     default:
       // Linux — podman is rootless + daemonless and therefore preferred.
       return ["podman", "docker"];
@@ -409,17 +366,14 @@ async function runDetection(): Promise<void> {
     ALL_PROVIDERS.map(async (provider) => {
       const ok = await Promise.resolve(provider.detect());
       detectionCache.set(provider.id, ok);
-    }),
+    })
   );
 }
 
-function normaliseRuntimeOverride(
-  raw: string | undefined,
-): SandboxRuntimeId | null {
+function normaliseRuntimeOverride(raw: string | undefined): SandboxRuntimeId | null {
   if (!raw || raw === "auto") return null;
   const lowered = raw.toLowerCase().trim();
-  if (PROVIDER_BY_ID.has(lowered as SandboxRuntimeId))
-    return lowered as SandboxRuntimeId;
+  if (PROVIDER_BY_ID.has(lowered as SandboxRuntimeId)) return lowered as SandboxRuntimeId;
   return null;
 }
 
@@ -440,9 +394,7 @@ export async function resolveProvider(): Promise<ContainerProvider> {
   }
   await detectionInFlight;
 
-  const override = normaliseRuntimeOverride(
-    process.env.SKILLS_SANDBOX_RUNTIME,
-  );
+  const override = normaliseRuntimeOverride(process.env.SKILLS_SANDBOX_RUNTIME);
   if (override) {
     const provider = PROVIDER_BY_ID.get(override)!;
     if (detectionCache.get(provider.id)) return provider;
@@ -469,7 +421,7 @@ export function _resetProviderCacheForTests(): void {
  */
 export function buildKillCommand(
   provider: ContainerProvider,
-  sandboxId: string,
+  sandboxId: string
 ): { command: string; args: string[] } {
   const name = SANDBOX_NAME(sandboxId);
   return {

@@ -16,10 +16,10 @@
  * is also hardened so a `v`-prefix or pre-release suffix no longer collapses the
  * comparison to `false` via `NaN`.
  */
+import { buildNpmExecOptions } from "@/lib/services/installers/utils";
+import { createLogger } from "@/shared/utils/logger";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { createLogger } from "@/shared/utils/logger";
-import { buildNpmExecOptions } from "@/lib/services/installers/utils";
 
 const execFileAsync = promisify(execFile);
 const log = createLogger("system/versionCheck");
@@ -51,7 +51,7 @@ let latestVersionCacheGeneration = 0;
 // client-reachable modules can import them without pulling this file's
 // server-only `child_process` import into the browser bundle. Re-exported here
 // for back-compat with existing server-side importers.
-export { normalizeVersion, isNewer } from "./versionCompare";
+export { isNewer, normalizeVersion } from "./versionCompare";
 
 /**
  * Latest published version via the `npm` CLI (fast when npm is on PATH, e.g. source installs).
@@ -63,17 +63,10 @@ export async function getLatestVersionFromNpmCli(
   execFn: typeof execFileAsync = execFileAsync
 ): Promise<string | null> {
   try {
-    // #5542 — win32 npm is npm.cmd; execFile without a shell throws "spawn npm ENOENT"
-    // on Node ≥24 (nodejs/node#52554). buildNpmExecOptions enables the shell on win32.
-    // #11885 — `--prefer-online` forces npm to revalidate its HTTP cache against the
-    // registry. Without it `npm info` can return a stale cached version, the same known
-    // bug class already fixed in the CLI's own copy for #4376 (see that fix's comment in
-    // bin/cli/commands/update.mjs::getLatestVersion()) but never mirrored here — this is
-    // the function backing the dashboard's "Update Available" banner.
     const { stdout } = await execFn(
       "npm",
       ["info", "omniroute", "version", "--json", "--prefer-online"],
-      buildNpmExecOptions(process.platform, { timeoutMs: LOOKUP_TIMEOUT_MS })
+      buildNpmExecOptions({ timeoutMs: LOOKUP_TIMEOUT_MS })
     );
     const parsed = JSON.parse(String(stdout).trim());
     return typeof parsed === "string" && parsed ? parsed : null;

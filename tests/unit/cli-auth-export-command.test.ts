@@ -8,12 +8,12 @@
 // limitation, not a defect in the code under test: the OmniRoute runtime itself
 // cascades to node:sqlite/sql.js when better-sqlite3 is unavailable. See
 // tests/unit/_helpers/betterSqlite3Availability.ts for a guard helper.
-import test from "node:test";
+import Database from "better-sqlite3";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import Database from "better-sqlite3";
+import test from "node:test";
 
 const ORIGINAL_DATA_DIR = process.env.DATA_DIR;
 const ORIGINAL_STORAGE_ENCRYPTION_KEY = process.env.STORAGE_ENCRYPTION_KEY;
@@ -246,11 +246,6 @@ test("auth export --format env emits OMNIROUTE_<PROVIDER>_<FIELD>=<value> lines"
 });
 
 test("auth export --out writes the file with 0600 permissions (even if it pre-existed looser)", async (t) => {
-  if (process.platform === "win32") {
-    t.skip("POSIX file-mode assertion does not apply on Windows");
-    return;
-  }
-
   await withAuthExportEnv(async (dataDir, dbPath) => {
     process.env.STORAGE_ENCRYPTION_KEY = TEST_KEY;
     const { encryptCredential } = await import("../../bin/cli/encryption.mjs");

@@ -1,8 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { initWindowsTray, type WinTrayHandle } from "./trayWin.ts";
-import { enableAutoStart, disableAutoStart, isAutoStartEnabled } from "./autostart.ts";
+import { disableAutoStart, enableAutoStart, isAutoStartEnabled } from "./autostart.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -28,9 +27,7 @@ const FALLBACK_ICON_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAALGPC/xhBQAAAAlwSFlzAAALEwAACxMBAJqcGAAAAHpJREFUOE9jYBgFgwEwMjIy/Gdg+P8fyP4PxP8ZGBgEcBnGyMjIsICBgSEAhyH/gfgBUNN8XJoZsdkCVL8Ah+b/QPwbqvkBMvk/AwMDAzYX/GdgYAhAN+A/SICRWAMYGfFEJSMjzriEiwDR/xmIa2RkZCSqnZERb3QCAAo3KxzxbKe1AAAAAElFTkSuQmCC";
 
 export function getIconPath(): string {
-  const isWin = process.platform === "win32";
-  // On Windows prefer .ico but fall back to .png (tray.ps1 handles both via GDI+)
-  const candidates = isWin ? ["icon.ico", "icon.png"] : ["icon.png"];
+  const candidates = ["icon.png"];
   for (const iconFile of candidates) {
     const iconPath = join(__dirname, iconFile);
     if (existsSync(iconPath)) return iconPath;
@@ -52,7 +49,7 @@ export function getIconBase64(): string {
 
 export function isTraySupported(): boolean {
   const p = process.platform;
-  if (!["darwin", "win32", "linux"].includes(p)) return false;
+  if (!["linux"].includes(p)) return false;
   if (p === "linux" && !process.env.DISPLAY) return false;
   return true;
 }
@@ -75,44 +72,8 @@ const MENU_INDEX = {
 
 export async function initTray(options: TrayOptions): Promise<TrayInstance | null> {
   if (!isTraySupported()) return null;
-  if (process.platform === "win32") return initWindowsTrayInstance(options);
-  return initUnixTray(options);
-}
 
-async function initWindowsTrayInstance(options: TrayOptions): Promise<TrayInstance | null> {
-  const iconPath = getIconPath();
-  if (!iconPath) return null;
-  let autostartEnabled = await isAutoStartEnabled();
-  let handle: WinTrayHandle | null = null;
-  handle = initWindowsTray({
-    iconPath,
-    tooltip: `OmniRoute :${options.port}`,
-    onEvent: async (evt) => {
-      if (evt.type !== "click") return;
-      switch (evt.index) {
-        case MENU_INDEX.OPEN_DASHBOARD:
-          options.onOpenDashboard();
-          break;
-        case MENU_INDEX.AUTOSTART_TOGGLE: {
-          if (autostartEnabled) await disableAutoStart();
-          else await enableAutoStart();
-          autostartEnabled = !autostartEnabled;
-          handle?.update(buildMenuItems({ port: options.port, autostartEnabled }));
-          break;
-        }
-        case MENU_INDEX.QUIT:
-          options.onQuit();
-          break;
-      }
-    },
-  });
-  if (!handle) return null;
-  handle.update(buildMenuItems({ port: options.port, autostartEnabled }));
-  return {
-    update: (items) => handle!.update(items),
-    setTooltip: (text) => handle!.setTooltip(text),
-    destroy: () => handle!.destroy(),
-  };
+  return initUnixTray(options);
 }
 
 async function initUnixTray(options: TrayOptions): Promise<TrayInstance | null> {
@@ -124,9 +85,7 @@ async function initUnixTray(options: TrayOptions): Promise<TrayInstance | null> 
   const systray = new SysTray({
     menu: {
       icon: getIconBase64(),
-      // isTemplateIcon: false on darwin — the bundled icon.png is a full-color
-      // RGBA logo; template mode would render it as a solid white square
-      // because macOS template icons only use the alpha channel. (PR #1080)
+
       isTemplateIcon: false,
       title: "OmniRoute",
       tooltip: `OmniRoute :${options.port}`,

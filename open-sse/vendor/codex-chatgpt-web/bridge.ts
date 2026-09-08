@@ -1,15 +1,15 @@
 /* Adapted from miuuyy/codex-chatgpt-web v4.0.7 commit b59d7dc51b84fb1f465ff1d00f5207f3b2b4a494 (MIT). */
+import { projectCodexPublicError } from "../../utils/codexPublicError";
+import { adapterFailureFromMessage, classifyError, type CodexErrorPayload } from "./lib/errors";
+import { encodeCompactionSummary } from "./responses/compaction";
+import { encodeReasoningEnvelope, type ReasoningEnvelope } from "./responses/reasoning-envelope";
+import { resolveStallTimeoutSec } from "./stall-timeout";
 import type {
   AdapterEvent,
   CodexMessagePhase,
   CodexProviderContinuationState,
   CodexUsage,
 } from "./types";
-import { projectCodexPublicError } from "../../utils/codexPublicError";
-import { adapterFailureFromMessage, classifyError, type CodexErrorPayload } from "./lib/errors";
-import { encodeCompactionSummary } from "./responses/compaction";
-import { encodeReasoningEnvelope, type ReasoningEnvelope } from "./responses/reasoning-envelope";
-import { resolveStallTimeoutSec } from "./stall-timeout";
 import { usageDisplayTotalTokens } from "./usage/totals";
 
 function uuid(): string {
@@ -989,20 +989,6 @@ export function bridgeToResponsesSSE(
     }, heartbeatMs);
   };
 
-  const waitForCapacity = async () => {
-    while (!closed && (controller.desiredSize ?? 1) <= 0) {
-      await new Promise<void>((resolve) => setTimeout(resolve, 5));
-    }
-  };
-
-  const pump = async () => {
-    while (!closed) {
-      await waitForCapacity();
-      if (closed) return;
-      await step();
-    }
-  };
-
   const cancelStream = () => {
     // Client (Codex) disconnected. Stop emitting and let the caller abort the upstream fetch so a
     // cancelled turn does not leak the upstream stream or keep draining tokens (RC2).
@@ -1012,31 +998,6 @@ export function bridgeToResponsesSSE(
     onCancel?.();
     returnIterator();
   };
-
-  if ((options?.streamPlatform ?? process.platform) === "win32") {
-    // Returning a Promise from a ReadableStream pull() served by Bun on Windows hits Bun#32111's
-    // native teardown crash. Keep only Windows push-driven and retain HWM backpressure by polling
-    // desiredSize; Darwin/Linux use the native pull contract below.
-    return new ReadableStream<Uint8Array>({
-      start(streamController) {
-        controller = streamController;
-        startStream();
-        void pump().catch((error) => {
-          if (closed) return;
-          closed = true;
-          if (beat) clearInterval(beat);
-          onCancel?.();
-          returnIterator();
-          try {
-            controller.error(error);
-          } catch {
-            /* already closed */
-          }
-        });
-      },
-      cancel: cancelStream,
-    });
-  }
 
   return new ReadableStream<Uint8Array>({
     start(streamController) {

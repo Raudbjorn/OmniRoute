@@ -84,14 +84,6 @@ const EXPECTED_BINARY_HASHES: Record<string, [number, string]> = {
     9_746_720,
     "10cfed8b7f8ce5767d74188bcc2c249f9b0102e8ae90b381b85ec53fbd84c59f",
   ],
-  "@wreq-js/binding-darwin-arm64": [
-    7_754_432,
-    "f426855858e4c661361a93440ed5fd5bd1e4f6926b3b1c0bf8449bdfe35d0936",
-  ],
-  "@wreq-js/binding-darwin-x64": [
-    8_249_144,
-    "ef00da7db372d5a71403a17f8067655f7313ae58816150ec4a00680546b35f27",
-  ],
   "@wreq-js/binding-linux-arm64-gnu": [
     8_669_896,
     "5a515d02c9693f1440aa88da7a6a09332fb93844f66590e6eb1be582284a96e2",
@@ -108,17 +100,9 @@ const EXPECTED_BINARY_HASHES: Record<string, [number, string]> = {
     9_036_248,
     "34c43f6694dfa5c749771f14bd19a4d4823707d428bc12d7d141ffa3176dccd6",
   ],
-  "@wreq-js/binding-win32-arm64-msvc": [
-    6_994_432,
-    "c853e10e272f31d3e5bf3e14cf64a3bfb41ef94d428f895cb73a67f0c58c46fa",
-  ],
-  "@wreq-js/binding-win32-x64-msvc": [
-    8_003_584,
-    "2659898ee73ab64bb1ec4b4b1dd0c1e1d50f7dc579bad456d8bcad84349b01d4",
-  ],
 };
 
-test("wreq-js 3.2 manifest pins all nine audited native addons to package-lock", () => {
+test("wreq-js 3.2 manifest pins the supported audited native addons to package-lock", () => {
   const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as NativeManifest;
   const packageLock = JSON.parse(readFileSync(join(ROOT, "package-lock.json"), "utf8")) as {
     packages: Record<
@@ -140,7 +124,7 @@ test("wreq-js 3.2 manifest pins all nine audited native addons to package-lock",
   assert.equal(manifest.source.commit, "0d52d5fa252841aeef34d4d063b1766a59612bf7");
   assert.equal(manifest.rust.cargoLockPackages, 229);
   assert.equal(manifest.rust.boringSsl.modified, true);
-  assert.equal(manifest.nativeAddons.length, 9);
+  assert.equal(manifest.nativeAddons.length, 5);
 
   assert.deepEqual(
     manifest.nativeAddons.map((entry) => entry.package).sort(),

@@ -55,8 +55,6 @@ Manage AI provider connections: OAuth providers (Claude Code, Codex), API key pr
 
 OpenRouter connections can store a per-connection `preset` in Advanced Settings. When set, OmniRoute sends it as the OpenRouter top-level request field, for example `"preset": "email-copywriter"`, unless the client request already supplied its own `preset`.
 
-![Providers Dashboard](../screenshots/01-providers.png)
-
 ---
 
 ## 🎨 Combos
@@ -81,15 +79,11 @@ Recent combo improvements:
   fusion, chaos, pipeline and nested-execute strategies do not expand
   placeholders yet.
 
-![Combos Dashboard](../screenshots/02-combos.png)
-
 ---
 
 ## 📊 Analytics
 
 Comprehensive usage analytics with token consumption, cost estimates, activity heatmaps, weekly distribution charts, and per-provider breakdowns.
-
-![Analytics Dashboard](../screenshots/03-analytics.png)
 
 ---
 
@@ -97,15 +91,11 @@ Comprehensive usage analytics with token consumption, cost estimates, activity h
 
 Real-time monitoring: uptime, memory, version, latency percentiles (p50/p95/p99), cache statistics, provider circuit breaker states, active quota-monitored sessions, and combo target health.
 
-![Health Dashboard](../screenshots/04-health.png)
-
 ---
 
 ## 🔧 Translator Playground
 
 Four modes for debugging API translations: **Playground** (format converter), **Chat Tester** (live requests), **Test Bench** (batch tests), and **Live Monitor** (real-time stream).
-
-![Translator Playground](../screenshots/05-translator.png)
 
 ---
 
@@ -133,15 +123,11 @@ Comprehensive settings panel with **7 tabs**:
 - **Resilience** — Rate limit persistence, circuit breaker tuning, auto-disable banned accounts, provider expiration monitoring, **Context Relay** handoff threshold and summary model configuration, per-provider 429 classification & `useUpstream429BreakerHints` toggle, model cooldowns
 - **Advanced** — Configuration overrides, configuration audit trail, fallback degradation mode, background mode degradation for Responses API
 
-![Settings Dashboard](../screenshots/06-settings.png)
-
 ---
 
 ## 🔧 CLI Tools
 
 One-click configuration for AI coding tools: Claude Code, Codex CLI, OpenClaw, Kilo Code, Antigravity, Cline, Continue, Cursor, and Factory Droid. Features automated config apply/reset, connection profiles, and model mapping.
-
-![CLI Tools Dashboard](../screenshots/07-cli-tools.png)
 
 ---
 
@@ -243,15 +229,11 @@ Generate images, videos, and music from the dashboard. Supports OpenAI, xAI, Tog
 
 Real-time request logging with filtering by provider, model, account, and API key. Shows status codes, token usage, latency, and response details.
 
-![Usage Logs](../screenshots/08-usage.png)
-
 ---
 
 ## 🌐 API Endpoint
 
 Your unified API endpoint with capability breakdown: Chat Completions, Responses API, Embeddings, Image Generation, Reranking, Audio Transcription, Text-to-Speech, Moderations, and registered API keys. Cloudflare Quick Tunnel, Tailscale Funnel, ngrok Tunnel, and cloud proxy support are available for remote access.
-
-![Endpoint Dashboard](../screenshots/09-endpoint.png)
 
 ---
 

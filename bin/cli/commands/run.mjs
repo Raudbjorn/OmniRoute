@@ -1,31 +1,26 @@
-import {
-  runLaunchCommand as runLaunchClaudeCommand,
-  buildClaudeEnv,
-  resolveClaudeSpawn,
-  quoteClaudeArgs,
-  resolveLaunchTarget,
-} from "./launch.mjs";
-import {
-  buildCodexEnv,
-  buildCodexProviderArgs,
-  resolveCodexSpawn,
-  quoteCodexArgs,
-  resolveCodexTarget,
-  runLaunchCodexCommand as runLaunchCodexCommand,
-} from "./launch-codex.mjs";
-import { t } from "../i18n.mjs";
+import { spawn } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import { join } from "node:path";
-import { spawn, execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { resolveActiveContext } from "../contexts.mjs";
-import { quoteShellArgs } from "../utils/winShellArgs.mjs";
 import {
   listManifestTargets,
   manifestModelArgs,
   manifestRequiresModel,
   resolveManifestTarget,
 } from "../cli-manifest.mjs";
+import { resolveActiveContext } from "../contexts.mjs";
+import { t } from "../i18n.mjs";
+import {
+  buildCodexEnv,
+  buildCodexProviderArgs,
+  resolveCodexTarget,
+  runLaunchCodexCommand,
+} from "./launch-codex.mjs";
+import {
+  buildClaudeEnv,
+  resolveLaunchTarget,
+  runLaunchCommand as runLaunchClaudeCommand,
+} from "./launch.mjs";
 
 function isBlank(value) {
   return value === undefined || value === null || String(value).trim() === "";
@@ -122,7 +117,7 @@ async function buildClaudePlan(rawOpts, args = []) {
   };
 
   const { baseUrl, authToken } = resolveLaunchTarget(merged);
-  const commandSpec = await resolveClaudeSpawn(process.platform);
+  const commandSpec = { command: "claude", shell: undefined };
 
   const configDir = merged.profile
     ? join(merged.claudeHome || join(os.homedir(), ".claude"), "profiles", merged.profile)
@@ -132,7 +127,7 @@ async function buildClaudePlan(rawOpts, args = []) {
     configDir,
     model: merged.model || undefined,
   });
-  const quotedArgs = quoteClaudeArgs(args, process.platform);
+  const quotedArgs = args;
 
   return {
     target: "claude",
@@ -157,14 +152,14 @@ async function buildCodexPlan(rawOpts, args = []) {
   };
 
   const { baseUrl, authToken } = resolveCodexTarget(merged);
-  const commandSpec = await resolveCodexSpawn(process.platform);
+  const commandSpec = { command: "codex", shell: undefined };
 
   const providerArgs = buildCodexProviderArgs(baseUrl, merged.model || undefined);
   const profileArgs = merged.profile ? ["--profile", merged.profile] : [];
 
   const env = buildCodexEnv(process.env, authToken);
   const fullArgs = [...providerArgs, ...profileArgs, ...args];
-  const quotedArgs = quoteCodexArgs(fullArgs, process.platform);
+  const quotedArgs = fullArgs;
 
   return {
     target: "codex",
@@ -184,28 +179,7 @@ async function buildCodexPlan(rawOpts, args = []) {
 const NO_AUTH_SENTINEL = "omniroute-no-auth";
 
 function resolveGenericSpawn(command) {
-  if (process.platform !== "win32") return { command, shell: undefined };
-
-  try {
-    const output = execFileSync("where.exe", [command], {
-      stdio: ["ignore", "pipe", "ignore"],
-      encoding: "utf8",
-      timeout: 3000,
-      windowsHide: true,
-    });
-    const matches = output
-      .split(/\r?\n/)
-      .map((value) => value.trim())
-      .filter(Boolean);
-    const preferred = matches.find((value) => /\.exe$/i.test(value));
-    if (preferred) return { command: preferred, shell: undefined };
-    const shim = matches.find((value) => /\.(?:cmd|bat)$/i.test(value));
-    if (shim) return { command: shim, shell: true };
-  } catch {
-    // Fall through to the conventional npm shim.
-  }
-
-  return { command: `${command}.cmd`, shell: true };
+  return { command, shell: undefined };
 }
 
 function genericEnv(baseEnv, kind, baseUrl, authToken, model) {
@@ -330,7 +304,7 @@ async function buildGenericPlan(target, rawOpts, args = []) {
     baseUrl,
     command: commandSpec.command,
     shell: commandSpec.shell,
-    args: quoteShellArgs(fullArgs, process.platform),
+    args: fullArgs,
     model: model || undefined,
     envDiff: envPreview(process.env, env),
     authSource: toAuthSource(rawOpts),
@@ -394,16 +368,11 @@ async function runGenericTarget(target, rawOpts, args) {
     childEnv.GEMINI_CLI_HOME = overlayHome;
   }
 
-  const child = spawn(
-    commandSpec.command,
-    quoteShellArgs([...modelArgs, ...args], process.platform),
-    {
-      env: childEnv,
-      stdio: "inherit",
-      shell: commandSpec.shell,
-      ...(process.platform === "win32" ? { windowsHide: true } : {}),
-    }
-  );
+  const child = spawn(commandSpec.command, [...modelArgs, ...args], {
+    env: childEnv,
+    stdio: "inherit",
+    shell: commandSpec.shell,
+  });
 
   const cleanup = () => {
     if (!overlayHome) return;

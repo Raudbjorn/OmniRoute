@@ -11,38 +11,16 @@
  * propagate). This test pins that platform branch, plus a static guard that main.js routes
  * the server shutdown through killProcessTree (not a raw nextServer.kill).
  */
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createRequire } from "node:module";
+import { join } from "node:path";
+import { describe, it } from "node:test";
 
 const require = createRequire(import.meta.url);
 const { killProcessTree } = require("../../electron/processTree.js");
 
 describe("killProcessTree (#3347)", () => {
-  it("win32: kills the whole tree via `taskkill /PID <pid> /T /F` (not proc.kill)", () => {
-    const spawnCalls: Array<{ cmd: string; args: string[] }> = [];
-    let procKillCalled = false;
-    const proc = {
-      pid: 1234,
-      kill: () => {
-        procKillCalled = true;
-      },
-    };
-    const spawnFn = (cmd: string, args: string[]) => {
-      spawnCalls.push({ cmd, args });
-      return { on: () => {} };
-    };
-
-    killProcessTree(proc, { platform: "win32", signal: "SIGTERM", spawnFn });
-
-    assert.equal(spawnCalls.length, 1, "expected exactly one taskkill spawn");
-    assert.equal(spawnCalls[0].cmd, "taskkill");
-    assert.deepEqual(spawnCalls[0].args, ["/PID", "1234", "/T", "/F"]);
-    assert.equal(procKillCalled, false, "must NOT fall back to proc.kill when taskkill spawns");
-  });
-
   it("posix: uses signal-based proc.kill (signals propagate), never taskkill", () => {
     let killedWith: string | null = null;
     let spawned = false;
@@ -61,23 +39,6 @@ describe("killProcessTree (#3347)", () => {
 
     assert.equal(killedWith, "SIGTERM");
     assert.equal(spawned, false, "must not spawn taskkill on POSIX");
-  });
-
-  it("win32 fallback: taskkill spawn throwing falls back to proc.kill", () => {
-    let killedWith: string | null = null;
-    const proc = {
-      pid: 99,
-      kill: (sig: string) => {
-        killedWith = sig;
-      },
-    };
-    const spawnFn = () => {
-      throw new Error("taskkill not found");
-    };
-
-    killProcessTree(proc, { platform: "win32", signal: "SIGKILL", spawnFn });
-
-    assert.equal(killedWith, "SIGKILL", "fallback to proc.kill when taskkill is unavailable");
   });
 
   it("no-op on null/pid-less process (does not throw)", () => {

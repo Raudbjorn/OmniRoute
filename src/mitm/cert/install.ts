@@ -1,16 +1,7 @@
-import fs from "fs";
-import crypto from "crypto";
 import { exec } from "child_process";
-import {
-  execFileText,
-  execFileWithPassword,
-  getErrorMessage,
-  quotePowerShell,
-  runElevatedPowerShell,
-} from "../systemCommands.ts";
-
-const IS_WIN = process.platform === "win32";
-const IS_MAC = process.platform === "darwin";
+import crypto from "crypto";
+import fs from "fs";
+import { execFileWithPassword, getErrorMessage } from "../systemCommands.ts";
 
 const LINUX_CERT_NAME = "omniroute-mitm.crt";
 
@@ -117,37 +108,7 @@ function getCertFingerprint(certPath: string): string {
  * Check if certificate is already installed in system store
  */
 export async function checkCertInstalled(certPath: string): Promise<boolean> {
-  if (IS_WIN) return checkCertInstalledWindows(certPath);
-  if (IS_MAC) return checkCertInstalledMac(certPath);
   return checkCertInstalledLinux(certPath);
-}
-
-/**
- * macOS `security find-certificate -a -Z` prints the SHA-1 as a colon-less
- * hex string (e.g. `SHA-1 hash: ABCDEF…`), while {@link getCertFingerprint}
- * returns a colon-separated one (`AB:CD:EF…`). A raw substring check therefore
- * never matched and the cert was reported as not-installed on every run,
- * re-prompting for the sudo install. Normalize both sides (strip `:`,
- * upper-case) before comparing.
- */
-export function macCertOutputHasFingerprint(securityOutput: string, fingerprint: string): boolean {
-  const normalize = (value: string) => value.replace(/:/g, "").toUpperCase();
-  return normalize(securityOutput).includes(normalize(fingerprint));
-}
-
-async function checkCertInstalledMac(certPath: string): Promise<boolean> {
-  try {
-    const fingerprint = getCertFingerprint(certPath);
-    const output = await execFileText("security", [
-      "find-certificate",
-      "-a",
-      "-Z",
-      "/Library/Keychains/System.keychain",
-    ]);
-    return macCertOutputHasFingerprint(output, fingerprint);
-  } catch {
-    return false;
-  }
 }
 
 async function checkCertInstalledLinux(certPath: string): Promise<boolean> {
@@ -156,31 +117,6 @@ async function checkCertInstalledLinux(certPath: string): Promise<boolean> {
     const destFile = `${config.dir}/${LINUX_CERT_NAME}`;
     if (!fs.existsSync(destFile)) return false;
     return getCertFingerprint(certPath) === getCertFingerprint(destFile);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Windows `certutil -store <storename> <certId>` accepts a serial number, a
- * SHA-1 thumbprint, or a substring of the subject/friendly name as `certId`.
- * Older code passed the literal legacy hostname `daily-cloudcode-pa.googleapis.com`
- * here — it only "worked" because that happens to be the CA's own commonName
- * today (`generate.ts` derives it from `ANTIGRAVITY_TARGET.hosts[0]`), a
- * coincidence with no shared symbol coupling the two (#7275). Deriving the
- * thumbprint from the actual `certPath` file — the same identity
- * {@link checkCertInstalledMac} already keys off via {@link getCertFingerprint}
- * — makes the Windows store lookup match the real generated CA regardless of
- * any future rename/reorder in `generate.ts`.
- */
-export function certutilThumbprint(certPath: string): string {
-  return getCertFingerprint(certPath).replace(/:/g, "");
-}
-
-async function checkCertInstalledWindows(certPath: string): Promise<boolean> {
-  try {
-    await execFileText("certutil", ["-store", "Root", certutilThumbprint(certPath)]);
-    return true;
   } catch {
     return false;
   }
@@ -201,7 +137,7 @@ export async function installCert(sudoPassword: string, certPath: string): Promi
     // clients (curl, reqwest, uv, Python requests). Repair the mode before
     // the early return so re-running install fixes a previously wrong-mode
     // cert instead of silently skipping it.
-    if (!IS_WIN && !IS_MAC) {
+    {
       const config = getLinuxCertConfig();
       await ensureSystemCertMode(`${config.dir}/${LINUX_CERT_NAME}`, sudoPassword);
     }
@@ -214,11 +150,7 @@ export async function installCert(sudoPassword: string, certPath: string): Promi
     return;
   }
 
-  if (IS_WIN) {
-    await installCertWindows(certPath);
-  } else if (IS_MAC) {
-    await installCertMac(sudoPassword, certPath);
-  } else {
+  {
     await installCertLinux(sudoPassword, certPath);
   }
 }
@@ -272,16 +204,7 @@ export function buildCertManualGuide(
   platform: NodeJS.Platform = process.platform
 ): CertManualGuide {
   let steps: string[];
-  if (platform === "win32") {
-    steps = [
-      `certutil -addstore -f Root "${certPath}"`,
-      "Or import it via certmgr.msc → Trusted Root Certification Authorities → Certificates → Import.",
-    ];
-  } else if (platform === "darwin") {
-    steps = [
-      `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${certPath}"`,
-    ];
-  } else {
+  {
     // Linux — match the detected distro's anchor dir + refresh command.
     const config = getLinuxCertConfig();
     steps = [
@@ -341,33 +264,6 @@ export async function installCaCert(
   return installCertResult(sudoPassword, caCertPath);
 }
 
-async function installCertMac(sudoPassword: string, certPath: string): Promise<void> {
-  try {
-    await execFileWithPassword(
-      "sudo",
-      [
-        "-S",
-        "security",
-        "add-trusted-cert",
-        "-d",
-        "-r",
-        "trustRoot",
-        "-k",
-        "/Library/Keychains/System.keychain",
-        certPath,
-      ],
-      sudoPassword
-    );
-    console.log(`✅ Installed certificate to system keychain: ${certPath}`);
-  } catch (error) {
-    const message = getErrorMessage(error);
-    const msg = message.includes("canceled")
-      ? "User canceled authorization"
-      : "Certificate install failed";
-    throw new Error(msg);
-  }
-}
-
 async function installCertLinux(sudoPassword: string, certPath: string): Promise<void> {
   try {
     const config = getLinuxCertConfig();
@@ -414,27 +310,6 @@ export async function ensureSystemCertMode(destFile: string, sudoPassword: strin
   }
 }
 
-// SECURITY-AUDITOR-NOTE: This function and the surrounding install/uninstall
-// pair appear in Socket.dev finding `77484.js` (AI-detected potential malware).
-// They install / remove the OmniRoute MITM root CA from the OS trust store and
-// only run when an operator explicitly enables the MITM proxy from the local
-// dashboard at /dashboard/cli-tools/mitm. The privileged commands invoked
-// here — `certutil -addstore Root`, `security add-trusted-cert`,
-// `update-ca-certificates`, `update-ca-trust` — are the platform-standard
-// CA-install paths used by mitmproxy, Charles, Fiddler, and Caddy. The script
-// passed to `runElevatedPowerShell` is now written to an on-disk `.ps1` file
-// (see systemCommands.ts) instead of base64-encoded into `-EncodedCommand`,
-// removing the textbook fingerprint Socket's AI scanner pattern-matches as
-// malware. See docs/security/SOCKET_DEV_FINDINGS.md §1 for the full attestation.
-async function installCertWindows(certPath: string): Promise<void> {
-  await runElevatedPowerShell(`
-    $certPath = ${quotePowerShell(certPath)};
-    $proc = Start-Process certutil -ArgumentList @('-addstore','Root',$certPath) -Verb RunAs -Wait -PassThru;
-    if ($proc.ExitCode -ne 0) { throw "certutil exited with code $($proc.ExitCode)" }
-  `);
-  console.log(`✅ Installed certificate to Windows Root store`);
-}
-
 /**
  * Uninstall SSL certificate from system store
  */
@@ -450,33 +325,8 @@ export async function uninstallCert(sudoPassword: string, certPath: string): Pro
     return;
   }
 
-  if (IS_WIN) {
-    await uninstallCertWindows(certPath);
-  } else if (IS_MAC) {
-    await uninstallCertMac(sudoPassword, certPath);
-  } else {
+  {
     await uninstallCertLinux(sudoPassword, certPath);
-  }
-}
-
-async function uninstallCertMac(sudoPassword: string, certPath: string): Promise<void> {
-  const fingerprint = getCertFingerprint(certPath).replace(/:/g, "");
-  try {
-    await execFileWithPassword(
-      "sudo",
-      [
-        "-S",
-        "security",
-        "delete-certificate",
-        "-Z",
-        fingerprint,
-        "/Library/Keychains/System.keychain",
-      ],
-      sudoPassword
-    );
-    console.log("✅ Uninstalled certificate from system keychain");
-  } catch (err) {
-    throw new Error("Failed to uninstall certificate");
   }
 }
 
@@ -499,22 +349,4 @@ async function uninstallCertLinux(sudoPassword: string, certPath: string): Promi
   } catch (err) {
     throw new Error("Failed to uninstall certificate");
   }
-}
-
-/**
- * Pure builder for the elevated `certutil -delstore` script, extracted so the
- * regression test can assert the argv it embeds without spawning a real
- * `powershell`/UAC prompt (mirrors {@link buildCertManualGuide} /
- * {@link buildElevatedScriptWrapper}, already tested the same way).
- */
-export function buildWindowsDelstoreScript(thumbprint: string): string {
-  return `
-    $proc = Start-Process certutil -ArgumentList @('-delstore','Root',${quotePowerShell(thumbprint)}) -Verb RunAs -Wait -PassThru;
-    if ($proc.ExitCode -ne 0) { throw "certutil exited with code $($proc.ExitCode)" }
-  `;
-}
-
-async function uninstallCertWindows(certPath: string): Promise<void> {
-  await runElevatedPowerShell(buildWindowsDelstoreScript(certutilThumbprint(certPath)));
-  console.log("✅ Uninstalled certificate from Windows Root store");
 }

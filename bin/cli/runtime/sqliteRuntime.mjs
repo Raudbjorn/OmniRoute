@@ -1,9 +1,9 @@
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { homedir } from "node:os";
 import { execSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { validateBinaryMagic, platformBinaryLabel } from "./magicBytes.mjs";
+import { platformBinaryLabel, validateBinaryMagic } from "./magicBytes.mjs";
 
 const RUNTIME_DIR = join(homedir(), ".omniroute", "runtime");
 // Exported so the packaging coherence guard (tests/unit/pack-boot-runtime-paths.test.ts)
@@ -129,7 +129,7 @@ function ensureRuntimeDir() {
 
 async function installRuntime() {
   ensureRuntimeDir();
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+  const npm = "npm";
   execSync(
     `${npm} install --prefix "${RUNTIME_DIR}" ${BETTER_SQLITE3_VERSION} --no-audit --no-fund --silent`,
     { stdio: ["ignore", "ignore", "pipe"], timeout: 180_000 }

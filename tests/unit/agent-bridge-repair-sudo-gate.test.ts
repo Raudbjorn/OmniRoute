@@ -2,14 +2,14 @@
  * #7836 — Agent Bridge Repair must not spawn `sudo -S` with an empty password.
  * Pins the shared MITM sudo gate and the repair route's 400 rejection path.
  */
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
+import { isSudoPasswordRequired } from "../../src/mitm/dns/dnsConfig.ts";
 import {
   isMitmSudoPasswordRequired,
   normalizeMitmSudoPasswordInput,
   resolveMitmSudoPassword,
 } from "../../src/mitm/sudoGate.ts";
-import { isSudoPasswordRequired } from "../../src/mitm/dns/dnsConfig.ts";
 
 test("normalizeMitmSudoPasswordInput treats whitespace-only as empty", () => {
   assert.equal(normalizeMitmSudoPasswordInput("   "), "");
@@ -30,20 +30,13 @@ test("isMitmSudoPasswordRequired returns false when a password is present", () =
 });
 
 test("isMitmSudoPasswordRequired treats whitespace-only as missing", () => {
-  if (process.platform === "win32") return;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   if (isRootUser) return;
   if (!isSudoPasswordRequired()) return;
   assert.equal(isMitmSudoPasswordRequired("   "), true);
 });
 
-test("isMitmSudoPasswordRequired is false on Windows", () => {
-  if (process.platform !== "win32") return;
-  assert.equal(isMitmSudoPasswordRequired(""), false);
-});
-
 test("isMitmSudoPasswordRequired matches isSudoPasswordRequired when unprivileged on POSIX", () => {
-  if (process.platform === "win32") return;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   if (isRootUser) {
     assert.equal(isMitmSudoPasswordRequired(""), false);
@@ -52,9 +45,7 @@ test("isMitmSudoPasswordRequired matches isSudoPasswordRequired when unprivilege
   assert.equal(isMitmSudoPasswordRequired(""), isSudoPasswordRequired());
 });
 
-const repairRoute = await import(
-  "../../src/app/api/tools/agent-bridge/repair/route.ts"
-);
+const repairRoute = await import("../../src/app/api/tools/agent-bridge/repair/route.ts");
 
 function makeRepairRequest(body: Record<string, unknown> = {}) {
   return new Request("http://127.0.0.1/api/tools/agent-bridge/repair", {
@@ -65,7 +56,6 @@ function makeRepairRequest(body: Record<string, unknown> = {}) {
 }
 
 test("POST /repair returns 400 Missing sudoPassword when sudo is required and none supplied", async () => {
-  if (process.platform === "win32") return;
   if (!isSudoPasswordRequired()) return;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   if (isRootUser) return;
@@ -77,7 +67,6 @@ test("POST /repair returns 400 Missing sudoPassword when sudo is required and no
 });
 
 test("POST /repair returns 400 for whitespace-only sudoPassword without invoking repair", async () => {
-  if (process.platform === "win32") return;
   if (!isSudoPasswordRequired()) return;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   if (isRootUser) return;

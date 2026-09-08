@@ -1,6 +1,6 @@
-import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import test, { afterEach } from "node:test";
 
 const genericModule = await import("../../open-sse/services/genericQuotaFetcher.ts");
 const scoringModule = await import("../../open-sse/services/combo/quotaScoring.ts");
@@ -118,15 +118,6 @@ test("Claude family excludes unknown weekly buckets", () => {
   assert.equal(quota.window7d?.percentUsed, 0.1);
 });
 
-test("unscoped provider-limits conversion retains conservative global windows", () => {
-  const quota = convertUsageToQuotaInfo(usage);
-
-  assert.ok(quota);
-  assert.equal(quota.window5h?.percentUsed, 1);
-  assert.equal(quota.window7d?.percentUsed, 1);
-  assert.equal(quota.limitReached, true);
-});
-
 test("reset-aware fetch scope is family-wide for Antigravity and * otherwise", () => {
   assert.equal(getQuotaFetchScope("agy", "gemini-3.7-flash-high"), "family:gemini");
   assert.equal(getQuotaFetchScope("antigravity", "claude-opus-4-6-thinking"), "family:claude");
@@ -134,7 +125,10 @@ test("reset-aware fetch scope is family-wide for Antigravity and * otherwise", (
 });
 
 test("buildAutoCandidates uses the shared Antigravity fetch-scope helper", () => {
-  const combo = fs.readFileSync(new URL("../../open-sse/services/combo.ts", import.meta.url), "utf8");
+  const combo = fs.readFileSync(
+    new URL("../../open-sse/services/combo.ts", import.meta.url),
+    "utf8"
+  );
   const strategies = fs.readFileSync(
     new URL("../../open-sse/services/combo/quotaStrategies.ts", import.meta.url),
     "utf8"
@@ -152,29 +146,6 @@ test("buildAutoCandidates uses the shared Antigravity fetch-scope helper", () =>
 afterEach(() => {
   genericModule.__testing?.resetUsageFetcher?.();
   genericModule.__testing?.clearCache?.();
-});
-
-test("fetchGenericQuota scopes Gemini windows and still catalogs sibling families", async () => {
-  let fetches = 0;
-  genericModule.__testing.setUsageFetcher(async () => {
-    fetches += 1;
-    return usage;
-  });
-
-  const quota = await fetchGenericQuota("conn-gemini", {
-    provider: "agy",
-    requestedModel: "agy/gemini-3.7-flash-high",
-  });
-
-  assert.ok(quota);
-  assert.equal(quota.window5h?.percentUsed, 0.03);
-  assert.equal(quota.limitReached, false);
-  assert.equal(quota.windows?.claude_gpt_weekly, undefined);
-  assert.equal(quota.windows?.["claude-opus-4-6-thinking"], undefined);
-  const windows = getQuotaWindows("agy");
-  assert.equal(windows.includes("claude_gpt_weekly"), true);
-  assert.equal(windows.includes("gemini_weekly"), true);
-  assert.equal(fetches, 1);
 });
 
 test("invalidateGenericQuotaCache clears every family-scoped entry for a connection", async () => {

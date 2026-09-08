@@ -48,8 +48,6 @@ export interface AgentBridgeServerState {
   hasCachedPassword?: boolean;
   /** Server OS requires a sudo password and none is cached (#7836). */
   needsSudoPassword?: boolean;
-  /** Whether the OmniRoute server is running on Windows. */
-  isWin?: boolean;
 }
 
 export type AgentMappingsMap = Record<string, MappingRow[]>;
@@ -83,7 +81,6 @@ export default function AgentBridgePageClient({
   const { runPrivileged, sudoModalProps } = useMitmSudoPrompt({
     hasCachedPassword: data.serverState.hasCachedPassword === true,
     needsSudoPassword: data.serverState.needsSudoPassword === true,
-    isWin: data.serverState.isWin === true,
   });
 
   const postServerAction = useCallback(
@@ -303,7 +300,7 @@ export default function AgentBridgePageClient({
             certTrusted={data.serverState.certTrusted}
             hasCachedPassword={data.serverState.hasCachedPassword === true}
             needsSudoPassword={data.serverState.needsSudoPassword === true}
-            isWin={data.serverState.isWin === true}
+
             onError={setActionError}
             onRefresh={refresh}
           />

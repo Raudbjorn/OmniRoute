@@ -224,7 +224,7 @@ export async function POST(request: Request) {
             error:
               error instanceof Error
                 ? error.message
-                : "Die ChatGPT-Browserprüfung konnte nicht abgeschlossen werden.",
+                : "ChatGPT browser verification could not be completed.",
           },
           { status: 400 }
         );

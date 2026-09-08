@@ -296,3 +296,18 @@ docker-compose.yml.bak
 
 # check:install-upgrade work trees (~12 GB, disposable)
 /.install-upgrade/
+coverage/
+# Obsidian sync plugin — committed for community distribution
+!obsidian-plugin/
+obsidian-plugin/node_modules/
+data/
+cloud/
+/.source/
+# Temporary local worktrees used to build unpublished npm tarballs
+/.deploy-build-*/
+.claude/
+!tests/fixtures/devin-bridge/e2e-workspace/.claude/
+!tests/fixtures/devin-bridge/e2e-workspace/.claude/**
+# Isolated Devin bridge workspaces, evidence, and test databases
+.sandbox/
+.playwright-cli/

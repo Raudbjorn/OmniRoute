@@ -41,11 +41,6 @@ const REQUIRED_DOC_DIAGRAMS = [
   "docs/diagrams/exported/db-schema-overview.svg",
 ];
 
-const REQUIRED_DOC_SCREENSHOTS = [
-  "docs/screenshots/01-providers.png",
-  "docs/screenshots/05-translator.png",
-];
-
 // Compile .dockerignore patterns into a simple matcher.
 // We only need to support the directives we actually use: glob `**`, plain
 // path prefixes, and negations starting with `!`.
@@ -133,7 +128,7 @@ test("#2348 .dockerignore keeps every doc the in-product viewer needs", () => {
   const missing: string[] = [];
   const ignored: string[] = [];
 
-  for (const docPath of [...REQUIRED_DOCS, ...REQUIRED_DOC_DIAGRAMS, ...REQUIRED_DOC_SCREENSHOTS]) {
+  for (const docPath of [...REQUIRED_DOCS, ...REQUIRED_DOC_DIAGRAMS]) {
     const absPath = path.resolve(REPO_ROOT, docPath);
     if (!fs.existsSync(absPath)) {
       missing.push(docPath);

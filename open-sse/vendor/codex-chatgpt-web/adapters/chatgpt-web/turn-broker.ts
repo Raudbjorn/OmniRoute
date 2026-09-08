@@ -3,7 +3,6 @@ import { createHash, randomBytes } from "node:crypto";
 import { chmodSync, existsSync, lstatSync, mkdirSync, unlinkSync } from "node:fs";
 import { createConnection, createServer, type Server, type Socket } from "node:net";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { isWindowsPipeEndpoint } from "../../config";
 import {
   CompactionTransactionStore,
   type CompactionTransactionHandle,
@@ -439,19 +438,14 @@ export class TurnBroker implements TurnBrokerOwner {
         })
       );
     }
-    if (
-      !isWindowsPipeEndpoint(this.socketPath) &&
-      existsSync(this.socketPath) &&
-      lstatSync(this.socketPath).isSocket()
-    )
+    if (existsSync(this.socketPath) && lstatSync(this.socketPath).isSocket())
       unlinkSync(this.socketPath);
   }
 
   private start(): Promise<void> {
     if (this.startPromise) return this.startPromise;
     this.startPromise = new Promise<void>((resolveStart, rejectStart) => {
-      const windowsPipe = isWindowsPipeEndpoint(this.socketPath);
-      if (!windowsPipe) {
+      {
         // sun_path is a fixed-size field in the kernel, so an over-long path fails inside listen()
         // with nothing but "Failed to listen" and no hint that the length is the problem. Say so.
         const encodedLength = Buffer.byteLength(this.socketPath);
@@ -478,15 +472,11 @@ export class TurnBroker implements TurnBrokerOwner {
         });
         server.listen(this.socketPath, () => {
           server.off("error", rejectStart);
-          if (!windowsPipe) chmodSync(this.socketPath, 0o600);
+          chmodSync(this.socketPath, 0o600);
           resolveStart();
         });
       };
 
-      if (windowsPipe) {
-        listen();
-        return;
-      }
       if (!existsSync(this.socketPath)) {
         listen();
         return;

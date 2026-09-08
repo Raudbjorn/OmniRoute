@@ -17,8 +17,8 @@
 // Tool: lockfile-lint v5 (node_modules/.bin/lockfile-lint).
 
 import { execFileSync } from "node:child_process";
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const ROOT = process.cwd();
@@ -80,12 +80,6 @@ export function getWorkspaceDependencyCheckCommand(
   comSpec = process.env.ComSpec
 ) {
   const npmArgs = ["ls", "--workspaces", "--depth=0", "--package-lock-only"];
-  if (platform === "win32") {
-    return {
-      command: comSpec || "cmd.exe",
-      args: ["/d", "/s", "/c", "npm.cmd", ...npmArgs],
-    };
-  }
 
   return {
     command: "npm",

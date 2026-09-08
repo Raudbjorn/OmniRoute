@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 
 import {
   DevinDesktopExecutor,
+  classifyDevinDesktopError,
   encodeDevinDesktopRequest,
   resolveDevinDesktopExtensionVersion,
   resolveDevinDesktopVersion,
@@ -75,6 +76,10 @@ function protobufFields(bytes: Uint8Array): Map<number, Array<number | Uint8Arra
     let value: number | Uint8Array;
     if (wireType === 0) {
       [value, offset] = readVarint(bytes, offset);
+    } else if (wireType === 1) {
+      if (offset + 8 > bytes.length) throw new Error("truncated fixed64 field");
+      value = bytes.slice(offset, offset + 8);
+      offset += 8;
     } else if (wireType === 2) {
       let length: number;
       [length, offset] = readVarint(bytes, offset);
@@ -140,7 +145,7 @@ test("Devin Desktop request encoder has a deterministic installed-schema golden"
 
   assert.equal(
     Buffer.from(payload).toString("hex"),
-    "0a3f0a0877696e64737572661206312e34382e321a036b65792205656e2d55533a06332e362e3237520773657373696f6e620877696e6473757266aa01036a7774120673797374656d1a0d0a02753110011a0568656c6c6f1a0e0a02613110021a06616e737765721a160a02743110041a06726573756c743a0663616c6c2d31380572076d6f64656c2d7882010763617363616465aa01076d6f64656c2d78"
+    "0a3f0a0877696e64737572661206312e34382e321a036b65792205656e2d55533a06332e362e3237520773657373696f6e620877696e6473757266aa01036a7774120673797374656d1a0d0a02753110011a0568656c6c6f1a0e0a02613110021a06616e737765721a160a02743110041a06726573756c743a0663616c6c2d313805421d08011080401880e80729000000000000f03f382841666666666666ee3f72076d6f64656c2d7882010763617363616465aa01076d6f64656c2d78"
   );
   const request = protobufFields(payload);
   assert.equal(new TextDecoder().decode(bytesValue(request, 2)), "system");
@@ -152,6 +157,19 @@ test("Devin Desktop request encoder has a deterministic installed-schema golden"
     [1, 2, 4]
   );
   assert.equal(request.get(7)?.[0], 5);
+  const completion = protobufFields(bytesValue(request, 8));
+  assert.equal(completion.get(1)?.[0], 1);
+  assert.equal(completion.get(2)?.[0], 8192);
+  assert.equal(completion.get(3)?.[0], 128_000);
+  assert.equal(completion.get(7)?.[0], 40);
+  const tempBytes = bytesValue(completion, 5);
+  assert.equal(new DataView(tempBytes.buffer, tempBytes.byteOffset, 8).getFloat64(0, true), 1.0);
+  const topPBytes = bytesValue(completion, 8);
+  assert.equal(
+    Math.round(new DataView(topPBytes.buffer, topPBytes.byteOffset, 8).getFloat64(0, true) * 100) /
+      100,
+    0.95
+  );
 });
 
 test("Devin Desktop tool fixture uses only the proven request fields", () => {
@@ -527,4 +545,111 @@ test("Devin Desktop sanitizes auth failures and never issues chat", async () => 
   } finally {
     await mock.close();
   }
+});
+
+test("Devin Desktop sanitizes Claude Code subagent prompt fingerprints", async () => {
+  let capturedPayload: Uint8Array | null = null;
+  const mock = await listen((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (c) => chunks.push(c));
+    request.on("end", () => {
+      if (request.url === "/exa.auth_pb.AuthService/GetUserJwt") {
+        response.writeHead(200, { "Content-Type": "application/proto" });
+        response.end(stringField(1, "jwt-value"));
+        return;
+      }
+      // Strip 5-byte connect envelope
+      capturedPayload = Buffer.concat(chunks).subarray(5);
+      response.writeHead(200, { "Content-Type": "application/connect+proto" });
+      response.end();
+    });
+  });
+
+  try {
+    await new DevinDesktopExecutor().execute({
+      model: "swe-1-7",
+      body: {
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an agent for Claude Code, Anthropic's official CLI for Claude.\n" +
+              "For clear communication with the user the assistant MUST avoid using emojis.",
+          },
+          { role: "user", content: "hello" },
+        ],
+      },
+      stream: true,
+      credentials: {
+        accessToken: "test-token",
+        providerSpecificData: { baseUrl: mock.origin },
+      },
+    });
+
+    assert.ok(capturedPayload);
+    const text = new TextDecoder().decode(capturedPayload);
+    assert.doesNotMatch(text, /Anthropic's official CLI for Claude/);
+    assert.doesNotMatch(
+      text,
+      /For clear communication with the user the assistant MUST avoid using emojis/
+    );
+    assert.match(text, /You are an AI software engineering agent/);
+    assert.match(text, /Avoid using emojis/);
+  } finally {
+    await mock.close();
+  }
+});
+
+test("Devin Desktop classifies trailer errors correctly (content policy -> 400, quota -> 429, auth -> 401/403)", () => {
+  const contentPolicyErr = classifyDevinDesktopError(
+    "permission_denied: Your request was blocked by our content policy. Please remove sensitive or unsafe content from your prompt, memories, and other settings and try again."
+  );
+  assert.equal(contentPolicyErr.status, 400);
+  assert.equal(contentPolicyErr.code, "content_policy_violation");
+  assert.equal(contentPolicyErr.type, "invalid_request_error");
+
+  const rateLimitErr = classifyDevinDesktopError(
+    "resource_exhausted: Rate limit exceeded for model swe-1-7"
+  );
+  assert.equal(rateLimitErr.status, 429);
+  assert.equal(rateLimitErr.code, "rate_limit_exceeded");
+
+  const authErr = classifyDevinDesktopError("unauthenticated: Invalid authentication token");
+  assert.equal(authErr.status, 401);
+  assert.equal(authErr.code, "invalid_api_key");
+
+  const permErr = classifyDevinDesktopError(
+    "permission_denied: User does not have access to this feature"
+  );
+  assert.equal(permErr.status, 403);
+  assert.equal(permErr.code, "permission_denied");
+
+  const serverErr = classifyDevinDesktopError("internal: An internal server error occurred");
+  assert.equal(serverErr.status, 502);
+  assert.equal(serverErr.code, "upstream_error");
+});
+
+test("Devin Desktop CompletionConfig forwards max_tokens and clamps temperature=0", () => {
+  const payload = encodeDevinDesktopRequest({
+    apiKey: "key",
+    userJwt: "jwt",
+    model: "swe-1-7",
+    systemPrompt: "",
+    prompts: [{ messageId: "u1", source: 1, prompt: "hi" }],
+    sessionId: "session",
+    cascadeId: "cascade",
+    maxTokens: 32_000,
+    temperature: 0,
+    topP: 0.5,
+    topK: 20,
+  });
+  const request = protobufFields(payload);
+  const completion = protobufFields(bytesValue(request, 8));
+  assert.equal(completion.get(2)?.[0], 32_000);
+  const tempBytes = bytesValue(completion, 5);
+  const temperature = new DataView(tempBytes.buffer, tempBytes.byteOffset, 8).getFloat64(0, true);
+  assert.equal(temperature, 0.001);
+  const topPBytes = bytesValue(completion, 8);
+  assert.equal(new DataView(topPBytes.buffer, topPBytes.byteOffset, 8).getFloat64(0, true), 0.5);
+  assert.equal(completion.get(7)?.[0], 20);
 });

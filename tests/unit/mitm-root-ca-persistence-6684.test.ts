@@ -1,8 +1,8 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 
 import { loadOrCreateMitmCa } from "../../src/mitm/cert/rootCa.ts";
 
@@ -43,7 +43,7 @@ test("loadOrCreateMitmCa: a second call loads the same CA instead of regeneratin
 
 test(
   "loadOrCreateMitmCa: the written CA private key file mode is 0o600",
-  { skip: process.platform === "win32" },
+  { skip: false },
   async () => {
     const certDir = tmpCertDir();
     try {

@@ -1,9 +1,9 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { validateBinaryMagic, platformBinaryLabel } from "../../../bin/cli/runtime/magicBytes.mjs";
+import { join } from "node:path";
+import { test } from "node:test";
+import { platformBinaryLabel, validateBinaryMagic } from "../../../bin/cli/runtime/magicBytes.mjs";
 
 const dir = mkdtempSync(join(tmpdir(), "magic-test-"));
 
@@ -54,8 +54,7 @@ test("returns null for too-short file", () => {
 });
 
 test("platformBinaryLabel matches process.platform", () => {
-  const expected =
-    process.platform === "win32" ? "pe" : process.platform === "darwin" ? "macho" : "elf";
+  const expected = "elf";
   assert.equal(platformBinaryLabel(), expected);
 });
 

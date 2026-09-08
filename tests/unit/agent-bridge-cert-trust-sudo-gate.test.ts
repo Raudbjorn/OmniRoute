@@ -1,15 +1,14 @@
 /**
  * #7938 — Trust Cert must gate empty sudo the same way as Remove CA / Repair.
  */
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 import { isSudoPasswordRequired } from "../../src/mitm/dns/dnsConfig.ts";
 
 const certRoute = await import("../../src/app/api/tools/agent-bridge/cert/route.ts");
 const serverRoute = await import("../../src/app/api/tools/agent-bridge/server/route.ts");
 
 function skipWhenSudoNotRequired() {
-  if (process.platform === "win32") return true;
   if (!isSudoPasswordRequired()) return true;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   return isRootUser;
