@@ -6,10 +6,11 @@ lastUpdated: 2026-06-28
 
 # Resilience Guide
 
-OmniRoute has three distinct but related resilience mechanisms. Each has a different scope and purpose. Keep them separate when debugging routing behavior.
+OmniRoute has three core resilience mechanisms plus an opt-in global Provider Cooldown. Each has a different scope and purpose. Keep them separate when debugging routing behavior.
 
 ![3-layer resilience model](../diagrams/exported/resilience-3layers.svg)
 
+> The diagram shows the three core mechanisms; the opt-in global cooldown is described below.
 > Source: [diagrams/resilience-3layers.mmd](../diagrams/resilience-3layers.mmd)
 
 ## 1. Provider Circuit Breaker
@@ -50,9 +51,9 @@ OmniRoute has three distinct but related resilience mechanisms. Each has a diffe
 
 ---
 
-### Opt-in global Provider Cooldown (window gate)
+## 2. Opt-in global Provider Cooldown (window gate)
 
-A fourth, **opt-in** layer (`PROVIDER_COOLDOWN_ENABLED`, default **off**) keeps a
+This additional **opt-in** layer (`PROVIDER_COOLDOWN_ENABLED`, default **off**) keeps a
 cross-request memory of failing providers in
 `open-sse/services/providerCooldownTracker.ts`, consulted by combo target
 resolution so consecutive combo requests stop re-walking a provider that just
@@ -62,14 +63,22 @@ failed. Provider-level entries honor the `PROVIDER_PROFILES` window gate:
 | ------- | ---------------------------------------: | ---------------------------------: | -------------------------------: |
 | OAuth   |                                     `10` |                            `15min` |                           `5min` |
 | API key |                                     `15` |                            `30min` |                          `10min` |
+| Local   |                                      `2` |                             `5min` |                           `1min` |
+
+Local catalog backends and registry URLs on private hosts use the local profile.
+Optional-key and remote keyless providers use the API-key profile; authenticated
+providers retain their existing OAuth/API-key classification. Provider aliases
+use the same profile as their canonical IDs.
 
 Below the threshold the provider is **not** considered cooling; a success clears
 the window. Connection-level entries (`provider:connectionId`) keep the
 exponential `minRetryCooldownMs → maxRetryCooldownMs` backoff instead. Overrides:
-`OMNIROUTE_PROVIDER_BREAKER_{OAUTH,API_KEY}_{FAILURE_THRESHOLD,FAILURE_WINDOW_MS,COOLDOWN_MS}`.
+`OMNIROUTE_PROVIDER_BREAKER_{OAUTH,API_KEY,LOCAL}_{FAILURE_THRESHOLD,FAILURE_WINDOW_MS,COOLDOWN_MS}`.
 Regression guard: `tests/unit/provider-cooldown-window-gate.test.ts`.
 
-## 2. Connection Cooldown
+---
+
+## 3. Connection Cooldown
 
 **Scope:** single provider connection/account/key.
 
@@ -162,7 +171,7 @@ Related mechanisms remain separate:
 
 ---
 
-## 3. Model Lockout
+## 4. Model Lockout
 
 **Scope:** provider + connection + model triple.
 
@@ -230,7 +239,7 @@ lockout _state_ is ephemeral.
 
 ---
 
-## 4. Quota-Share Concurrency Control (v3.8.36)
+## 5. Quota-Share Concurrency Control (v3.8.36)
 
 Subscription accounts (GLM, MiniMax, etc.) often accept only ~1–3 concurrent
 requests; exceeding that triggers 429s and cooldowns. This is acute under
@@ -272,10 +281,10 @@ rate limit. Bounded by `comboCooldownWait` (`enabled`, `maxWaitMs`, `maxAttempts
 
 ---
 
-## 5. Request Queue Admission Control (v3.8.49 · issue #6593)
+## 6. Request Queue Admission Control (v3.8.49 · issue #6593)
 
 **Scope**: the local per-provider+connection rate-limit queue (`open-sse/services/rateLimitManager.ts`,
-backed by Bottleneck), one layer below the three mechanisms above.
+backed by Bottleneck), one layer below the core resilience mechanisms above.
 
 **`maxWaitMs` is a legacy persisted name for execution expiration.**
 `resilienceSettings.requestQueue.maxWaitMs` is passed to Bottleneck as a job
@@ -317,7 +326,7 @@ it is unit-testable without a real Bottleneck limiter.
 
 ---
 
-## 6. Slow-stream throughput watchdog (#9709)
+## 7. Slow-stream throughput watchdog (#9709)
 
 The optional `resilienceSettings.streamRecovery.throughputWatchdog` guard detects
 an upstream that is still sending chunks but producing assistant output below the
@@ -342,7 +351,7 @@ single-shot, so usage accounting and semaphore release are not duplicated.
 
 ---
 
-## 7. Upstream Status Restatement (misstated quota errors)
+## 8. Upstream Status Restatement (misstated quota errors)
 
 **Scope:** one upstream gateway that reports temporary quota exhaustion with the wrong HTTP status.
 
