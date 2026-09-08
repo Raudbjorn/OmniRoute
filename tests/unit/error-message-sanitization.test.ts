@@ -277,6 +277,22 @@ test("buildErrorBody preserves caller-supplied type/code overrides", async () =>
   assert.notEqual(body.error.code, "bad_gateway");
 });
 
+// ChatGPT Session's input classifier (open-sse/executors/chatgpt-session/messages.ts) emits
+// these three codes for rejected request shapes — they must survive buildErrorBody, not be
+// replaced with the generic bad_request fallback, or the caller loses the machine-readable
+// reason for a 400 it could otherwise act on.
+for (const code of ["no_user_message", "unsupported_content_part", "vision_unsupported"]) {
+  test(`buildErrorBody preserves the ChatGPT Session input error code "${code}"`, async () => {
+    const { buildErrorBody } = await import("../../open-sse/utils/error.ts");
+    const body = buildErrorBody(400, "rejected", undefined, {
+      type: "invalid_request_error",
+      code,
+    });
+    assert.equal(body.error.code, code);
+    assert.notEqual(body.error.code, "bad_request");
+  });
+}
+
 test("types barrel keeps the model cooldown payload export only", async () => {
   const src = await read("src/types/index.ts");
   assert.match(src, /ModelCooldownErrorPayload/);

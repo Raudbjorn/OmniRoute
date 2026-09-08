@@ -78,27 +78,32 @@ try {
     console.log(`[docs-sync] openapi.yaml info.version matches: ${openApiVersion}`);
   }
 
-  const changelogSections = extractChangelogSections(readText(changelogPath));
-  if (changelogSections.length === 0) {
-    fail("CHANGELOG.md has no version sections");
+  // This fork removed CHANGELOG.md and its release pipeline entirely (see AGENTS.md).
+  if (!fs.existsSync(changelogPath)) {
+    console.log("[docs-sync] CHANGELOG.md not present (removed in this fork) - skipping");
   } else {
-    if (changelogSections[0] !== "Unreleased") {
-      fail('CHANGELOG.md first section must be "## [Unreleased]"');
+    const changelogSections = extractChangelogSections(readText(changelogPath));
+    if (changelogSections.length === 0) {
+      fail("CHANGELOG.md has no version sections");
     } else {
-      console.log("[docs-sync] changelog has top Unreleased section");
-    }
+      if (changelogSections[0] !== "Unreleased") {
+        fail('CHANGELOG.md first section must be "## [Unreleased]"');
+      } else {
+        console.log("[docs-sync] changelog has top Unreleased section");
+      }
 
-    const semverSections = changelogSections.filter((section) => isSemver(section));
-    if (semverSections.length === 0) {
-      fail("CHANGELOG.md has no semver release section");
-    } else if (semverSections[0] !== packageVersion) {
-      fail(
-        `Latest changelog release (${semverSections[0]}) differs from package.json (${packageVersion})`
-      );
-    } else {
-      console.log(
-        `[docs-sync] latest changelog release matches package version: ${packageVersion}`
-      );
+      const semverSections = changelogSections.filter((section) => isSemver(section));
+      if (semverSections.length === 0) {
+        fail("CHANGELOG.md has no semver release section");
+      } else if (semverSections[0] !== packageVersion) {
+        fail(
+          `Latest changelog release (${semverSections[0]}) differs from package.json (${packageVersion})`
+        );
+      } else {
+        console.log(
+          `[docs-sync] latest changelog release matches package version: ${packageVersion}`
+        );
+      }
     }
   }
 

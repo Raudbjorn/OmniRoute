@@ -19,6 +19,7 @@ import {
   resolveWebSessionImportApiKey,
 } from "@/shared/providers/webSessionCredentials";
 import { rejectRetiredCommonChatGptWebProvider } from "@/lib/providers/chatgptWebRetirementResponse";
+import { usesChatGptBrowserSessionCredentials } from "@/shared/constants/chatgptWebCodex";
 
 export async function POST(request: Request) {
   const authError = await requireManagementAuth(request);
@@ -42,6 +43,23 @@ export async function POST(request: Request) {
 
   const retirementResponse = rejectRetiredCommonChatGptWebProvider(provider);
   if (retirementResponse) return retirementResponse;
+
+  // chatgpt-web-codex and chatgpt-session read their encoded, browser-verified storage state
+  // from `credentials.apiKey` (decodeChatGptWebCodexSecrets) — never from providerSpecificData.
+  // This route stores a raw cookie in providerSpecificData with apiKey left null (see the
+  // resolveWebSessionImportApiKey call below), which those two executors cannot use: an imported
+  // connection would sit unverified and never actually run. Real credentials require the
+  // dashboard's own validate-then-finalize flow (src/app/api/providers/route.ts,
+  // finalizeValidatedChatGptWebCodexSecrets), which launches a browser to verify the cookie
+  // first — not a fit for this no-verification bulk-import endpoint.
+  if (usesChatGptBrowserSessionCredentials(provider)) {
+    return NextResponse.json(
+      {
+        error: `Provider '${provider}' requires browser-session verification and cannot be bulk-imported here. Add it individually from the dashboard.`,
+      },
+      { status: 400 }
+    );
+  }
 
   if (!requiresWebSessionCredential(provider)) {
     return NextResponse.json(

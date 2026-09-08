@@ -251,12 +251,17 @@ export interface ServiceSupervisorCooldown {
  * These are NOT upstream AI provider failures — they are local supervisor state changes. Returns
  * a short 5s connection-cooldown decision (no provider circuit-breaker trip), or null when the
  * status/header don't match.
+ *
+ * 429 is honored alongside 503: a provider-specific skip signal (e.g. a ChatGPT browser-session
+ * usage-limit reached mid-turn) can arrive on either status, and without this a repeated
+ * account-scoped 429 would otherwise trip the whole-provider circuit breaker instead of just
+ * cooling down the one connection.
  */
 export function serviceSupervisorCooldown(
   status: number,
   headers: Headers | Record<string, string> | null
 ): ServiceSupervisorCooldown | null {
-  if (status !== 503 || !headers) return null;
+  if ((status !== 503 && status !== 429) || !headers) return null;
   const hintValue =
     typeof (headers as Headers).get === "function"
       ? (headers as Headers).get("x-omni-fallback-hint")
