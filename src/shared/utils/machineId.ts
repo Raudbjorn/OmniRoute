@@ -1,12 +1,7 @@
-import { execFileSync, execSync } from "child_process";
-import { existsSync, readFileSync } from "fs";
+import { execSync } from "child_process";
+import { readFileSync } from "fs";
 import os from "os";
 
-/**
- * Module-level cache: on Windows, execSync("hostname") spawns
- * cmd.exe which is expensive.  Cache the result after first call
- * since the machine ID never changes at runtime.
- */
 let cachedRawId: string | null = null;
 
 /**
@@ -17,68 +12,9 @@ export function resetMachineIdCache(): void {
   cachedRawId = null;
 }
 
-/**
- * Get raw machine ID using OS-specific methods.
- *
- * We use try/catch waterfall: try each OS method and fall through
- * to the next on failure. Platform checks are INSIDE try blocks so they
- * run at RUNTIME (not build time), avoiding Next.js SWC dead-code elimination.
- *
- * On Linux: skips Windows (REG.exe) and macOS (ioreg) strategies entirely.
- */
 function getMachineIdRaw(): string {
   // Return cached result immediately (machine identity is stable at runtime)
   if (cachedRawId !== null) return cachedRawId;
-
-  // Strategy 1: Windows — REG.exe query for MachineGuid
-  try {
-    if (process.platform !== "win32") {
-      throw new Error("Not Windows");
-    }
-    const sysRoot = process.env.SystemRoot || process.env.windir || "C:\\Windows";
-    const regPath = `${sysRoot}\\System32\\REG.exe`;
-    if (existsSync(/* turbopackIgnore: true */ regPath)) {
-      const output = execFileSync(
-        regPath,
-        ["QUERY", "HKEY_LOCAL_MACHINE\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid"],
-        { encoding: "utf8", timeout: 5000 }
-      );
-      const id = output
-        .split("REG_SZ")[1]
-        ?.replace(/\r+|\n+|\s+/gi, "")
-        ?.toLowerCase();
-      if (id && id.length > 8) {
-        cachedRawId = id;
-        return id;
-      }
-    }
-  } catch {
-    // Not Windows or REG.exe failed — continue
-  }
-
-  // Strategy 2: macOS — ioreg IOPlatformUUID
-  try {
-    if (process.platform !== "darwin") {
-      throw new Error("Not macOS");
-    }
-    const output = execSync("ioreg -rd1 -c IOPlatformExpertDevice", {
-      encoding: "utf8",
-      timeout: 5000,
-    });
-    if (output.includes("IOPlatformUUID")) {
-      const id = output
-        .split("IOPlatformUUID")[1]
-        ?.split("\n")[0]
-        ?.replace(/=|\s+|"/gi, "")
-        ?.toLowerCase();
-      if (id && id.length > 8) {
-        cachedRawId = id;
-        return id;
-      }
-    }
-  } catch {
-    // Not macOS or ioreg not available — continue
-  }
 
   // Strategy 3: Linux — read machine-id files directly (no `head` or pipe)
   try {

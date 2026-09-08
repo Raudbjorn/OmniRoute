@@ -172,7 +172,7 @@ function linkDependencies(baseRoot) {
 }
 
 function installBaseDependencies(baseRoot) {
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+  const npm = "npm";
   const result = run(
     npm,
     ["ci", "--ignore-scripts", "--prefer-offline", "--no-audit", "--no-fund"],
@@ -182,7 +182,7 @@ function installBaseDependencies(baseRoot) {
 }
 
 function runTypeScript(root, tsconfig, compilerVersion) {
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+  const npm = "npm";
   const result = run(
     npm,
     [

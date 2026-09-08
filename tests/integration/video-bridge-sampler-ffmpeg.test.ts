@@ -30,7 +30,6 @@ const realRunner: VideoCommandRunner = async (executable, args, options) => {
     maxBuffer: 1024 * 1024,
     signal: options.signal,
     timeout: options.timeoutMs,
-    windowsHide: true,
   });
   return { stderr: String(result.stderr), stdout: String(result.stdout) };
 };

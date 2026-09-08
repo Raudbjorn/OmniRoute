@@ -5,20 +5,20 @@
  *
  * Body: AgentBridgeServerActionSchema
  */
-import { AgentBridgeServerActionSchema } from "@/shared/schemas/agentBridge";
-import { getCachedPassword, setCachedPassword } from "@/mitm/manager";
-import { installCertResult, checkCertInstalled } from "@/mitm/cert/install";
+import { createErrorResponse } from "@/lib/api/errorResponse";
+import { pickApiKeyForInternalUse } from "@/lib/db/apiKeys";
 import { generateCert } from "@/mitm/cert/generate";
+import { checkCertInstalled, installCertResult } from "@/mitm/cert/install";
 import { resolveMitmDataDir } from "@/mitm/dataDir";
+import { getCachedPassword, setCachedPassword } from "@/mitm/manager";
 import {
   isMitmSudoPasswordRequired,
   normalizeMitmSudoPasswordInput,
   resolveMitmSudoPassword,
 } from "@/mitm/sudoGate";
-import path from "path";
+import { AgentBridgeServerActionSchema } from "@/shared/schemas/agentBridge";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
-import { createErrorResponse } from "@/lib/api/errorResponse";
-import { pickApiKeyForInternalUse } from "@/lib/db/apiKeys";
+import path from "path";
 
 /**
  * Resolve the OmniRoute API key the spawned MITM child (`server.cjs`) uses to
@@ -111,7 +111,7 @@ export async function POST(request: Request): Promise<Response> {
           typeof raw.sudoPassword === "string"
             ? normalizeMitmSudoPasswordInput(raw.sudoPassword)
             : "";
-        if (process.platform !== "win32" && suppliedPassword) {
+        if (suppliedPassword) {
           setCachedPassword(suppliedPassword);
         }
         const trusted = await checkCertInstalled(certPath);

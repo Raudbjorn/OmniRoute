@@ -5,18 +5,18 @@
  *
  * Body: AgentBridgeDnsActionSchema { enabled: boolean }
  */
-import { AgentBridgeDnsActionSchema } from "@/shared/schemas/agentBridge";
-import { addDNSEntry, removeDNSEntry } from "@/mitm/dns/dnsConfig";
+import { createErrorResponse } from "@/lib/api/errorResponse";
 import { upsertAgentBridgeState } from "@/lib/db/agentBridgeState";
+import { addDNSEntry, removeDNSEntry } from "@/mitm/dns/dnsConfig";
 import { getCachedPassword, setCachedPassword } from "@/mitm/manager";
 import {
   isMitmSudoPasswordRequired,
   normalizeMitmSudoPasswordInput,
   resolveMitmSudoPassword,
 } from "@/mitm/sudoGate";
-import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
-import { createErrorResponse } from "@/lib/api/errorResponse";
 import { ALL_TARGETS } from "@/mitm/targets/index";
+import { AgentBridgeDnsActionSchema } from "@/shared/schemas/agentBridge";
+import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -65,7 +65,7 @@ export async function POST(request: Request, { params }: Params): Promise<Respon
 
     const suppliedPassword =
       typeof raw.sudoPassword === "string" ? normalizeMitmSudoPasswordInput(raw.sudoPassword) : "";
-    if (process.platform !== "win32" && suppliedPassword) {
+    if (suppliedPassword) {
       setCachedPassword(suppliedPassword);
     }
 

@@ -204,7 +204,6 @@ export function resolveSpawnArgs(apiKey: string, port: number): SpawnArgs {
       NODE_ENV: "production",
       // Home redirect → Dario's ~/.dario lands under DATA_DIR/services/dario/home.
       HOME: darioHome,
-      USERPROFILE: darioHome,
       // Loopback bind (redundant with the CLI flags above; belt-and-braces).
       DARIO_HOST: "127.0.0.1",
       DARIO_PORT: String(port),

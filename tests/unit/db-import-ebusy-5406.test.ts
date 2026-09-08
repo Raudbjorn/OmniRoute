@@ -1,8 +1,8 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 // Regression guard for #5406: the database-import route deleted the live
 // storage.sqlite + WAL/-shm/-journal sidecars with a plain synchronous
@@ -15,15 +15,6 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..", "..");
 const importRoute = join(repoRoot, "src/app/api/db-backups/import/route.ts");
-
-test("#5406: import route uses unlinkFileWithRetry (EBUSY-safe on Windows)", () => {
-  const src = readFileSync(importRoute, "utf8");
-  assert.match(
-    src,
-    /unlinkFileWithRetry/,
-    "import route must delete the sqlite files via unlinkFileWithRetry (EBUSY retry)"
-  );
-});
 
 test("#5406: import route does not raw-unlink the live sqlite files (EBUSY race)", () => {
   const src = readFileSync(importRoute, "utf8");

@@ -8,15 +8,15 @@
  *
  * Gap 7 — the application-layer analogue of ProxyBridge's `--cleanup` flag.
  */
-import { z } from "zod";
-import { repairMitm, getCachedPassword, setCachedPassword } from "@/mitm/manager";
+import { createErrorResponse } from "@/lib/api/errorResponse";
+import { getCachedPassword, repairMitm, setCachedPassword } from "@/mitm/manager";
 import {
   isMitmSudoPasswordRequired,
   normalizeMitmSudoPasswordInput,
   resolveMitmSudoPassword,
 } from "@/mitm/sudoGate";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
-import { createErrorResponse } from "@/lib/api/errorResponse";
+import { z } from "zod";
 
 // Exported for unit testing. Next.js only treats GET/POST/etc. as route
 // handlers; additional named exports are ignored by the App Router.
@@ -41,7 +41,7 @@ export async function POST(request: Request): Promise<Response> {
     const suppliedPassword = parsed.success
       ? normalizeMitmSudoPasswordInput(parsed.data.sudoPassword)
       : "";
-    if (process.platform !== "win32" && suppliedPassword) {
+    if (suppliedPassword) {
       setCachedPassword(suppliedPassword);
     }
     return Response.json({ ok: true, repaired: result.repaired });

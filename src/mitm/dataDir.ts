@@ -4,7 +4,7 @@ import path from "path";
 const APP_NAME = "omniroute";
 
 function fallbackHomeDir(): string {
-  const envHome = process.env.HOME || process.env.USERPROFILE;
+  const envHome = process.env.HOME;
   return typeof envHome === "string" && envHome.trim() ? path.resolve(envHome) : os.tmpdir();
 }
 
@@ -27,10 +27,6 @@ export function resolveMitmDataDir(): string {
   if (configured) return configured;
 
   const homeDir = safeHomeDir();
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
-    return path.join(appData, APP_NAME);
-  }
 
   const xdgConfigHome = normalizeConfiguredPath(process.env.XDG_CONFIG_HOME);
   if (xdgConfigHome) {

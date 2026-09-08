@@ -19,11 +19,11 @@
  *  - PUT body capped at MAX_PUT_BYTES.
  */
 
+import { createDecipheriv, scryptSync, timingSafeEqual } from "node:crypto";
 import fs from "node:fs";
-import path from "node:path";
-import { createDecipheriv, scryptSync, createHash, timingSafeEqual } from "node:crypto";
 import { createRequire } from "node:module";
 import os from "node:os";
+import path from "node:path";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -358,13 +358,6 @@ function getDefaultDataDir() {
     // ignore stat errors
   }
 
-  // 3) Windows → %APPDATA%/omniroute.
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
-    return path.join(appData, "omniroute");
-  }
-
-  // 4) XDG on Linux/macOS only when XDG_CONFIG_HOME is explicitly configured.
   const xdgConfigHome = process.env.XDG_CONFIG_HOME;
   if (typeof xdgConfigHome === "string" && xdgConfigHome.trim().length > 0) {
     return path.join(path.resolve(xdgConfigHome.trim()), "omniroute");
@@ -494,8 +487,7 @@ function buildEntryHref(baseHref, relativePath, isDir) {
 function handleOptions(req, res) {
   res.writeHead(200, {
     DAV: "1, 2",
-    Allow:
-      "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND, LOCK, UNLOCK",
+    Allow: "OPTIONS, GET, HEAD, PUT, DELETE, MKCOL, MOVE, COPY, PROPFIND, LOCK, UNLOCK",
     "MS-Author-Via": "DAV",
     "Content-Length": "0",
   });

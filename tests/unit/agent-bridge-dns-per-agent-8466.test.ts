@@ -9,9 +9,9 @@
  * hosts-file contents representing each failure direction, plus the
  * diagnose route to prove the agentId query param is threaded through.
  */
-import { test, mock, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { afterEach, mock, test } from "node:test";
 
 afterEach(() => {
   mock.restoreAll();
@@ -56,33 +56,6 @@ test("FALSE POSITIVE: only a leftover Antigravity host is present, Claude Code h
     status.dnsConfigured,
     false,
     "dnsConfigured must be false when the agent being diagnosed (Claude Code) has no host spoofed, even if a leftover Antigravity host is present"
-  );
-});
-
-test("no-agentId call sites: still Antigravity-only but Windows-aware (#8656)", async () => {
-  const realReadFileSync = fs.readFileSync.bind(fs);
-  mock.method(fs, "readFileSync", (p: unknown, enc?: BufferEncoding) => {
-    // After #8656: no-agentId uses checkDNSEntry() which reads HOSTS_FILE
-    // (Windows-aware) instead of hardcoded /etc/hosts. Still Antigravity-only
-    // semantics (checks all 4 Antigravity hosts), but reads the correct file.
-    const pathStr = String(p);
-    const isHostsFile =
-      pathStr === "/etc/hosts" || pathStr.includes("System32\\drivers\\etc\\hosts");
-    if (isHostsFile) {
-      // Claude Code host spoofed, but NO Antigravity host present. The legacy
-      // Antigravity-only check should still return false (unchanged semantics).
-      return "127.0.0.1 localhost\n127.0.0.1 api.anthropic.com\n::1 api.anthropic.com\n";
-    }
-    return realReadFileSync(p as string, enc);
-  });
-
-  const { getMitmStatus } = await import("../../src/mitm/manager.ts?probe=8466-legacy-8656");
-  const status = await getMitmStatus();
-
-  assert.equal(
-    status.dnsConfigured,
-    false,
-    "no-agentId still checks Antigravity-only (4 hosts via checkDNSEntry), now Windows-aware"
   );
 });
 

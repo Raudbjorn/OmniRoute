@@ -5,8 +5,8 @@ import { basename, dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { notifyLauncherTurn, readLauncherBrowserHostDescriptor } from "../../launcher-browser-host";
 import { ChatGptWebAdapterError } from "./adapter-error";
-import type { CompiledChatGptWebPrompt } from "./prompt";
 import type { BrowserTurn, ResolvedBrowserConfig } from "./browser-worker";
+import type { CompiledChatGptWebPrompt } from "./prompt";
 import { parseChatGptLunaCheckpoint, type ChatGptLunaCheckpoint } from "./rolling-checkpoint";
 
 interface PendingTurn {
@@ -313,7 +313,6 @@ export class LauncherBrowserHelperClient {
           CODEX_CHATGPT_WEB_BROWSER_HELPER_PROCESS: "1",
         },
         stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
       }
     );
     this.child = child;

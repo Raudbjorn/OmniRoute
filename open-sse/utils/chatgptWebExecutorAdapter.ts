@@ -295,20 +295,10 @@ export function resolveChatGptWebChromeExecutable(
     explicit,
     env.CHATGPT_WEB_CHROME_PATH,
     env.CHROME_PATH,
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/usr/bin/google-chrome",
     "/usr/bin/google-chrome-stable",
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
-    ...(env.PROGRAMFILES
-      ? [join(env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe")]
-      : []),
-    ...(env["PROGRAMFILES(X86)"]
-      ? [join(env["PROGRAMFILES(X86)"], "Google", "Chrome", "Application", "chrome.exe")]
-      : []),
-    ...(env.LOCALAPPDATA
-      ? [join(env.LOCALAPPDATA, "Google", "Chrome", "Application", "chrome.exe")]
-      : []),
   ];
   return candidates.find((candidate): candidate is string =>
     Boolean(candidate?.trim() && exists(candidate.trim()))

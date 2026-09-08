@@ -1,34 +1,33 @@
-import { spawn, type ChildProcess } from "child_process";
-import path from "path";
-import fs from "fs";
-import { resolveMitmDataDir } from "./dataDir.ts";
-import {
-  removeDNSEntry,
-  removeDNSEntries,
-  checkDNSEntryForAgent,
-  checkDNSEntry,
-} from "./dns/dnsConfig.ts";
-import { provisionDnsEntries } from "./dns/provision.ts";
-import { generateCert } from "./cert/generate.ts";
-import { installCertResult, installCaCert } from "./cert/install.ts";
-import { loadOrCreateMitmCa, resolveMitmCertDir } from "./cert/rootCa.ts";
-import { decideCertMigration } from "./cert/migration.ts";
-import { ALL_TARGETS } from "./targets/index.ts";
-import { detectAgent } from "./detection/index.ts";
-import type { AgentId, DetectionResult, MitmTarget } from "./types.ts";
-import { getAllAgentBridgeStates } from "@/lib/db/agentBridgeState.ts";
 import { getUserBypassPatterns } from "@/lib/db/agentBridgeBypass.ts";
 import { getGheCopilotHosts } from "@/lib/db/providers.ts";
-import { configureUpstreamCa } from "./upstreamTrust.ts";
 import { createLogger } from "@/shared/utils/logger.ts";
+import { spawn, type ChildProcess } from "child_process";
+import fs from "fs";
+import path from "path";
+import { generateCert } from "./cert/generate.ts";
+import { installCaCert, installCertResult } from "./cert/install.ts";
+import { decideCertMigration } from "./cert/migration.ts";
+import { loadOrCreateMitmCa, resolveMitmCertDir } from "./cert/rootCa.ts";
+import { resolveMitmDataDir } from "./dataDir.ts";
+import { detectAgent } from "./detection/index.ts";
+import {
+  checkDNSEntry,
+  checkDNSEntryForAgent,
+  removeDNSEntries,
+  removeDNSEntry,
+} from "./dns/dnsConfig.ts";
+import { provisionDnsEntries } from "./dns/provision.ts";
+import { runPrivilegedMitmStep } from "./privilegedMitmStep.ts";
 import {
   buildRepairPlan,
   collectManagedHosts,
   performRepairSteps,
   type RepairPlan,
 } from "./repair.ts";
-import { runPrivilegedMitmStep } from "./privilegedMitmStep.ts";
 import { removeStopDnsEntries } from "./stopDnsTeardown.ts";
+import { ALL_TARGETS } from "./targets/index.ts";
+import type { AgentId, DetectionResult, MitmTarget } from "./types.ts";
+import { configureUpstreamCa } from "./upstreamTrust.ts";
 
 export { buildRepairPlan, collectManagedHosts, type RepairPlan };
 
@@ -229,10 +228,7 @@ export function getAllAgentsStatus(): AgentStatus[] {
   }));
 }
 const MITM_SERVER_URL = new URL("./server.cjs", import.meta.url);
-const urlPath =
-  process.platform === "win32" && MITM_SERVER_URL.pathname.startsWith("/")
-    ? decodeURIComponent(MITM_SERVER_URL.pathname.slice(1))
-    : decodeURIComponent(MITM_SERVER_URL.pathname);
+const urlPath = decodeURIComponent(MITM_SERVER_URL.pathname);
 
 // Lazy-resolve to avoid module-level fs.existsSync + process.cwd() at module scope,
 // which causes Turbopack's NFT tracer to follow the path into the entire src/ tree.
@@ -403,16 +399,11 @@ export async function getMitmStatus(agentId?: string): Promise<{
     }
   }
 
-  // Check DNS configuration. When an agentId is provided, check THAT agent's
-  // own hosts (#8466) instead of always checking the Antigravity host set.
-  // Fix #8656: no-agentId path now uses checkDNSEntry() which is Windows-aware
-  // (reads HOSTS_FILE = C:\Windows\System32\drivers\etc\hosts on Windows).
   let dnsConfigured = false;
   try {
     if (agentId) {
       dnsConfigured = checkDNSEntryForAgent(agentId);
     } else {
-      // Use Windows-aware checkDNSEntry() instead of hardcoded /etc/hosts
       dnsConfigured = checkDNSEntry();
     }
   } catch {
@@ -612,7 +603,6 @@ async function startMitmInternal(
   }
 
   serverProcess = spawn(process.execPath, [resolveMitmServerPath()], {
-    windowsHide: true,
     env: {
       ...process.env,
       ROUTER_API_KEY: apiKey,

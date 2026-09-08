@@ -151,7 +151,7 @@ export function readLauncherBrowserHostDescriptor(
     throw new Error(`Launcher browser host is unavailable: descriptor is missing at ${path}`);
   const stat = statSync(path);
   if (!stat.isFile()) throw new Error(`Launcher browser descriptor is not a regular file: ${path}`);
-  if (process.platform !== "win32") {
+  {
     if ((stat.mode & 0o077) !== 0)
       throw new Error(`Launcher browser descriptor has unsafe permissions: ${path}`);
     const getuid = process.getuid;

@@ -1,13 +1,6 @@
 import { execFileSync } from "child_process";
 import fs from "fs";
-import os from "os";
-import path from "path";
-import {
-  execFileWithPassword,
-  isRoot,
-  quotePowerShell,
-  runElevatedPowerShell,
-} from "../systemCommands.ts";
+import { execFileWithPassword, isRoot } from "../systemCommands.ts";
 import { ALL_TARGETS } from "../targets/index.ts";
 
 // Legacy Antigravity defaults preserved for backward compat.
@@ -24,83 +17,46 @@ export function resolveHostsForAgent(agentId?: string): string[] {
   return target?.hosts ?? ANTIGRAVITY_HOSTS;
 }
 
-// Runtime platform check. Turbopack constant-folds a module-load
-// `process.platform` read to the Linux build machine and prunes the Windows
-// branch from the published artifact, so Windows 11's native `sudo.exe` then
-// sees POSIX `sudo -S` (#10293 / #11236 / #11430). `os.platform()` is a
-// function call the bundler cannot fold.
-function isWin32(): boolean {
-  return os.platform() === "win32";
-}
-
 function hostsFilePath(): string {
-  if (isWin32()) {
-    return path.join(
-      process.env.SystemRoot || "C:\\Windows",
-      "System32",
-      "drivers",
-      "etc",
-      "hosts"
-    );
-  }
   return "/etc/hosts";
 }
 
 export interface DnsCommandDependencies {
   execFileWithPassword?: typeof execFileWithPassword;
-  runElevatedPowerShell?: typeof runElevatedPowerShell;
 }
 
 function resolveCommandDependencies(deps?: DnsCommandDependencies) {
   return {
     execFileWithPassword: deps?.execFileWithPassword ?? execFileWithPassword,
-    runElevatedPowerShell: deps?.runElevatedPowerShell ?? runElevatedPowerShell,
   };
 }
 
-/**
- * Return true if `sudo` is available on PATH. Windows always reports `true`
- * (no sudo concept — UAC handles elevation). Minimal containers without sudo
- * also report `false`, so callers can fall through to the no-elevation path.
- */
 export function isSudoAvailable(): boolean {
-  if (isWin32()) return true;
   try {
     // `which sudo` exits 0 when found, non-zero otherwise. Fixed args, no
     // shell expansion — safe per Hard Rule #13.
-    execFileSync("which", ["sudo"], { stdio: "ignore", windowsHide: true });
+    execFileSync("which", ["sudo"], { stdio: "ignore" });
     return true;
   } catch {
     return false;
   }
 }
 
-/**
- * Return true when MITM elevation can proceed without prompting for a sudo
- * password — i.e. Windows (UAC handles it), root user, no sudo binary
- * (minimal container), or `sudo -n true` succeeds (passwordless NOPASSWD).
- */
 export function canRunSudoWithoutPassword(): boolean {
-  if (isWin32()) return true;
   if (isRoot()) return true;
   if (!isSudoAvailable()) return true;
   try {
     // `sudo -n true` exits 0 when the user can run sudo without a password
     // (cached credential or NOPASSWD). Exits non-zero otherwise. Fixed args.
-    execFileSync("sudo", ["-n", "true"], { stdio: "ignore", windowsHide: true });
+    execFileSync("sudo", ["-n", "true"], { stdio: "ignore" });
     return true;
   } catch {
     return false;
   }
 }
 
-/**
- * Server-side helper for the MITM API: true when a sudo password must be
- * collected from the user before invoking privileged commands.
- * False on Windows, root, missing-sudo containers, or NOPASSWD sudoers.
- */
 export function isSudoPasswordRequired(): boolean {
-  return !isWin32() && isSudoAvailable() && !canRunSudoWithoutPassword();
+  return isSudoAvailable() && !canRunSudoWithoutPassword();
 }
 
 /**
@@ -140,14 +96,6 @@ function hasHostEntry(hostsContent: string, hostname: string): boolean {
 // Public API — parametrized (new)
 // ---------------------------------------------------------------------------
 
-/**
- * Add /etc/hosts entries for every hostname in `hosts`.
- * Idempotent — existing entries are not duplicated.
- * Complies with Hard Rule #13: no string interpolation in shell commands.
- *
- * On Windows, all missing entries are batched into a single elevated PowerShell
- * invocation so the user gets one UAC prompt instead of one per line.
- */
 export async function addDNSEntries(
   hosts: string[],
   sudoPassword: string,
@@ -173,15 +121,7 @@ export async function addDNSEntries(
 
   if (missingEntries.length === 0) return;
 
-  if (isWin32()) {
-    const psHostsFile = quotePowerShell(hostsFilePath());
-    const psEntries = missingEntries.map((e) => quotePowerShell(e)).join(", ");
-    const script = "Add-Content -LiteralPath " + psHostsFile + " -Value " + psEntries;
-    await commands.runElevatedPowerShell(script);
-    for (const entry of missingEntries) {
-      console.log(`[DNS] Added entry: ${entry}`);
-    }
-  } else {
+  {
     const data = missingEntries.map((e) => `${e}\n`).join("");
     await commands.execFileWithPassword(
       "sudo",
@@ -209,14 +149,6 @@ const filtered = content.split(/\\r?\\n/).filter((line) => {
 fs.writeFileSync(filePath, filtered.join("\\n").replace(/\\n*$/, "\\n"));
 `;
 
-/**
- * Remove /etc/hosts entries for every hostname in `hosts`.
- * Idempotent — silently skips hosts that are not present.
- * Complies with Hard Rule #13: hostsFilePath() and hostname are passed as argv, not interpolated.
- *
- * On Windows, all hostnames are filtered in a single elevated PowerShell
- * invocation so the user gets one UAC prompt instead of one per host.
- */
 export async function removeDNSEntries(
   hosts: string[],
   sudoPassword: string,
@@ -229,26 +161,7 @@ export async function removeDNSEntries(
 
   if (presentHosts.length === 0) return;
 
-  if (isWin32()) {
-    const psHostsFile = quotePowerShell(hostsFilePath());
-    const psTargets = presentHosts.map((h) => quotePowerShell(h)).join(", ");
-    const script =
-      "$hostsFile = " +
-      psHostsFile +
-      ";\n          $targetHosts = @(" +
-      psTargets +
-      ");\n" +
-      "          $lines = Get-Content -LiteralPath $hostsFile;\n" +
-      "          $filtered = $lines | Where-Object {\n" +
-      "            $part = ($_ -split '\\s+') | Where-Object { $_ };\n" +
-      "            -not ($part.Length -ge 2 -and ($targetHosts -contains $part[1]))\n" +
-      "          };\n" +
-      "          Set-Content -LiteralPath $hostsFile -Value $filtered;\n        ";
-    await commands.runElevatedPowerShell(script);
-    for (const hostname of presentHosts) {
-      console.log(`[DNS] Removed entries for ${hostname}`);
-    }
-  } else {
+  {
     for (const hostname of presentHosts) {
       await commands.execFileWithPassword(
         "sudo",

@@ -9,10 +9,10 @@
  * (Hard Rules #15 + #17): a tunneled JWT cannot reach the start/stop routes.
  */
 
+import { DATA_DIR } from "@/lib/db/core";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn } from "node:child_process";
-import { DATA_DIR } from "@/lib/db/core";
 import { findHeadroomBinary } from "./detect";
 
 const HEADROOM_DIR = path.join(DATA_DIR ?? ".", "headroom");
@@ -106,7 +106,7 @@ export async function startHeadroomProxy(opts: { port?: number } = {}): Promise<
   const child = spawn(binary, ["proxy", "--port", String(safePort(opts.port))], {
     stdio: ["ignore", outFd, outFd],
     detached: true,
-    windowsHide: true,
+
     env: { ...process.env },
   });
 

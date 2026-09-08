@@ -1,15 +1,7 @@
-import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-  openSync,
-  readSync,
-  closeSync,
-  mkdirSync,
-} from "node:fs";
-import { join, sep } from "node:path";
 import { spawnSync } from "node:child_process";
+import { closeSync, existsSync, mkdirSync, openSync, readSync, writeFileSync } from "node:fs";
 import { platform } from "node:os";
+import { join } from "node:path";
 import { resolveDataDir } from "../data-dir.mjs";
 
 const BETTER_SQLITE3_VERSION = "12.10.1";
@@ -96,10 +88,6 @@ export function isBetterSqliteBinaryValid() {
     let formatOk;
     if (os === "linux")
       formatOk = magic.startsWith("7f454c46"); // ELF
-    else if (os === "darwin")
-      formatOk = magic.startsWith("cffaedfe") || magic.startsWith("cefaedfe"); // Mach-O
-    else if (os === "win32")
-      formatOk = magic.startsWith("4d5a"); // PE/MZ
     else formatOk = true;
     if (!formatOk) return false;
     // File-format magic bytes alone do not guarantee the binary was built for the Node ABI
@@ -114,13 +102,12 @@ export function isBetterSqliteBinaryValid() {
 
 export function npmInstallRuntime(pkgs, opts = {}) {
   const cwd = ensureRuntimeDir();
-  const isWin = platform() === "win32";
   const isBun = Boolean(process.versions.bun);
 
   let exe, args, displayCmd;
   if (isBun) {
     const bunArgs = ["add", ...pkgs, "--trust"];
-    [exe, args] = isWin ? ["cmd.exe", ["/c", "bun", ...bunArgs]] : ["bun", bunArgs];
+    [exe, args] = ["bun", bunArgs];
     displayCmd = `bun ${bunArgs.join(" ")}`;
   } else {
     const npmArgs = [
@@ -132,7 +119,7 @@ export function npmInstallRuntime(pkgs, opts = {}) {
       "--save-exact",
       ...pkgs.map((pkg) => `--allow-scripts=${pkg}`),
     ];
-    [exe, args] = isWin ? ["cmd.exe", ["/c", "npm", ...npmArgs]] : ["npm", npmArgs];
+    [exe, args] = ["npm", npmArgs];
     displayCmd = `npm ${npmArgs.join(" ")}`;
   }
 
@@ -183,5 +170,5 @@ export function buildEnvWithRuntime(baseEnv = process.env) {
   const runtimeNm = runtimeModules();
   const existing = baseEnv.NODE_PATH || "";
   const parts = [runtimeNm, existing].filter(Boolean);
-  return { ...baseEnv, NODE_PATH: parts.join(sep === "\\" ? ";" : ":") };
+  return { ...baseEnv, NODE_PATH: parts.join(":") };
 }

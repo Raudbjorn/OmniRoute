@@ -7,7 +7,7 @@
  * affinity. A second failure then takes a short cooldown and may rotate.
  */
 
-export const SAME_ACCOUNT_TRANSPORT_RETRY_MAX = 1;
+export const SAME_ACCOUNT_TRANSPORT_RETRY_MAX = 3;
 export const SAME_ACCOUNT_TRANSPORT_RETRY_MIN_DELAY_MS = 2000;
 export const SAME_ACCOUNT_TRANSPORT_RETRY_JITTER_MS = 1000;
 
@@ -23,6 +23,7 @@ const RETRYABLE_TRANSPORT_TEXT = [
   /econnreset/i,
   /socket hang up/i,
   /und_err_socket/i,
+  /permission_denied:.*internal error/i,
 ];
 
 const NON_RETRYABLE_ERROR_TYPES = new Set(["lease_error", "account_semaphore_capacity"]);
@@ -44,6 +45,16 @@ export function isRetryablePreOutputTransportError(
   const text = String(errorText || "");
   const numericStatus = Number(status);
   if (numericStatus === 429 || numericStatus === 401 || numericStatus === 400) return false;
+  // 403 is auth/permission — never retryable on its own. The single exception is
+  // Devin's known quirk where a transient internal error is mislabeled
+  // `permission_denied: internal error`; gate it explicitly instead of letting a
+  // generic 403 with retryable-looking text retry against a healthy account.
+  if (numericStatus === 403) return /permission_denied:.*internal error/i.test(text);
+  // Content-policy rejections are deterministic per payload — no account or
+  // retry can ever succeed with the same input.
+  if (/content policy|sensitive or unsafe content|content_policy_violation/i.test(text)) {
+    return false;
+  }
   if (/quota (threshold|exhausted)|credits exhausted/i.test(text)) return false;
   if (/invalid_request|prompt is too long|context.?length|unsupported model/i.test(text)) {
     return false;

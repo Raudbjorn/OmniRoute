@@ -14,7 +14,6 @@ const PATHS = [
   path.join(HOME, ".local", "bin", "codex"),
   path.join(HOME, ".npm-global", "bin", "codex"),
   path.join(HOME, "node_modules", ".bin", "codex"),
-  path.join(process.env.APPDATA ?? path.join(HOME, "AppData", "Roaming"), "npm", "codex.cmd"),
 ];
 
 export function detectCodex(): DetectionResult {

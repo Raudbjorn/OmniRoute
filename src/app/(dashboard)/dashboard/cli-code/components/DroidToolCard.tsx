@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Card, Button, ModelSelectModal, ManualConfigModal } from "@/shared/components";
-import CliStatusBadge from "./CliStatusBadge";
+import { Button, Card, ManualConfigModal, ModelSelectModal } from "@/shared/components";
 import { useTranslations } from "next-intl";
+import { useCallback, useEffect, useRef, useState } from "react";
+import CliStatusBadge from "./CliStatusBadge";
 
 import ProviderIcon from "@/shared/components/ProviderIcon";
 
@@ -289,12 +289,7 @@ export default function DroidToolCard({
       })),
     };
 
-    const platform = typeof navigator !== "undefined" && navigator.platform;
-    // eslint-disable-next-line no-restricted-syntax -- teknik string kontrolü, kullanıcı metni araması değil
-    const isWindows = platform?.toLowerCase().includes("win");
-    const settingsPath = isWindows
-      ? "%USERPROFILE%\\.factory\\settings.json"
-      : "~/.factory/settings.json";
+    const settingsPath = "~/.factory/settings.json";
 
     return [
       {

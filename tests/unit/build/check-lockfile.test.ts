@@ -9,16 +9,16 @@
 //
 // This validates the policy settings and the arg-assembly logic without requiring
 // a real package-lock.json or a network call.
-import test from "node:test";
 import assert from "node:assert/strict";
-import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import path from "node:path";
+import test from "node:test";
 // @ts-expect-error — .mjs helper has no type declarations; runtime shape is known.
 import {
-  getLockfileLintConfig,
   buildLockfileLintArgs,
+  getLockfileLintConfig,
   getWorkspaceDependencyCheckCommand,
   runWorkspaceDependencyCheck,
 } from "../../../scripts/check/check-lockfile.mjs";
@@ -193,26 +193,6 @@ test("buildLockfileLintArgs: --allowed-hosts values follow immediately after the
 test("getWorkspaceDependencyCheckCommand: checks every workspace at direct depth", () => {
   const command = getWorkspaceDependencyCheckCommand("linux");
   assert.deepEqual(command.args, ["ls", "--workspaces", "--depth=0", "--package-lock-only"]);
-});
-
-test("getWorkspaceDependencyCheckCommand: invokes npm directly outside Windows", () => {
-  const command = getWorkspaceDependencyCheckCommand("linux");
-  assert.equal(command.command, "npm");
-});
-
-test("getWorkspaceDependencyCheckCommand: invokes npm.cmd through cmd.exe on Windows", () => {
-  const command = getWorkspaceDependencyCheckCommand("win32", "C:\\Windows\\System32\\cmd.exe");
-  assert.equal(command.command, "C:\\Windows\\System32\\cmd.exe");
-  assert.deepEqual(command.args, [
-    "/d",
-    "/s",
-    "/c",
-    "npm.cmd",
-    "ls",
-    "--workspaces",
-    "--depth=0",
-    "--package-lock-only",
-  ]);
 });
 
 test("runWorkspaceDependencyCheck: executes the selected command and returns success", () => {

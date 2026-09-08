@@ -1,11 +1,10 @@
 /** Generic supervisor for embedded services (9router, CLIProxyAPI, future). */
 
-import { EventEmitter } from "node:events";
-import { spawn } from "node:child_process";
-import type { ChildProcess } from "node:child_process";
+import { getServiceRow, setToolStatus } from "@/lib/db/versionManager";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
-import { getServiceRow, updateServiceField, setToolStatus } from "@/lib/db/versionManager";
-import { RingBuffer } from "./ringBuffer";
+import type { ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { HealthChecker } from "./healthCheck";
 import {
   decidePreSpawn,
@@ -13,17 +12,11 @@ import {
   probeBeforeSpawn,
   resolvePortPid,
 } from "./portProbe";
-import type { ServiceConfig, ServiceState, ServiceStatus, LogLine, HealthState } from "./types";
+import { RingBuffer } from "./ringBuffer";
+import type { HealthState, LogLine, ServiceConfig, ServiceState, ServiceStatus } from "./types";
 
 const CRASH_FAST_THRESHOLD_MS = 5_000;
 
-/**
- * Builds the `spawn()` options for a supervised service child process.
- * `windowsHide: true` suppresses the transient conhost.exe/cmd console
- * window Windows briefly flashes open for spawned child processes (#8131).
- * Exported (rather than inlined) so a unit test can assert on it directly
- * instead of mocking `node:child_process`.
- */
 export function buildServiceSpawnOptions(
   env: NodeJS.ProcessEnv | undefined,
   cwd: string | undefined
@@ -32,14 +25,12 @@ export function buildServiceSpawnOptions(
   cwd: string | undefined;
   detached: boolean;
   stdio: ["ignore", "pipe", "pipe"];
-  windowsHide: boolean;
 } {
   return {
     env,
     cwd,
     detached: false,
     stdio: ["ignore", "pipe", "pipe"],
-    windowsHide: true,
   };
 }
 
@@ -154,11 +145,6 @@ export class ServiceSupervisor extends EventEmitter {
 
       const { command, args, env, cwd } = this.config.spawnArgs();
 
-      // spawn() can throw SYNCHRONOUSLY on Windows when the binary is not
-      // executable (EFTYPE/EINVAL for an ELF or a plain text file) instead of
-      // emitting the child 'error' event. Handle both paths identically so a
-      // non-spawnable service surfaces an explicit error state and the health
-      // poller is stopped instead of hammering a dead port forever.
       let child: ChildProcess;
       try {
         child = spawn(command, args, buildServiceSpawnOptions(env, cwd));
@@ -196,10 +182,7 @@ export class ServiceSupervisor extends EventEmitter {
       child.once("exit", (code, signal) => {
         void this.handleExit(code, signal, spawnTime);
       });
-      // Spawn failures (ENOENT, EACCES, or a non-executable binary such as an
-      // ELF on Windows) surface via the child 'error' event — NOT 'exit'.
-      // Without this handler the supervisor stays in "starting" forever and
-      // the health poller hammers the dead port every healthIntervalMs.
+
       child.once("error", (err) => {
         this.checker.stop();
         this.spawnFailed = true;

@@ -911,8 +911,8 @@
       "stream": "https://chatgpt.com"
     }
   },
-  "cheaperinference": {
-    "format": "openai",
+  "chatgpt-web-codex": {
+    "format": "openai-responses",
     "headers": {
       "apiKey": {
         "Accept": "text/event-stream",
@@ -930,8 +930,8 @@
       }
     },
     "url": {
-      "nonStream": "https://api.cheaperinference.com/v1/chat/completions",
-      "stream": "https://api.cheaperinference.com/v1/chat/completions"
+      "nonStream": "https://chatgpt.com",
+      "stream": "https://chatgpt.com"
     }
   },
   "chenzk": {

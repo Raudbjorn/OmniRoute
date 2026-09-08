@@ -31,30 +31,6 @@
       "sha256": "10cfed8b7f8ce5767d74188bcc2c249f9b0102e8ae90b381b85ec53fbd84c59f"
     },
     {
-      "target": "darwin-arm64",
-      "package": "@wreq-js/binding-darwin-arm64",
-      "version": "3.2.0",
-      "platform": "darwin",
-      "arch": "arm64",
-      "tarball": "https://registry.npmjs.org/@wreq-js/binding-darwin-arm64/-/binding-darwin-arm64-3.2.0.tgz",
-      "integrity": "sha512-TGbgqj7YKp6m2p79hyLtTBatKgU8SKEVL5e903KGSeSDKkLbgk8knFoZ2MakhJnlqKZhvLPCNLT7A3AStwIoHQ==",
-      "path": "wreq-js.darwin-arm64.node",
-      "size": 7754432,
-      "sha256": "f426855858e4c661361a93440ed5fd5bd1e4f6926b3b1c0bf8449bdfe35d0936"
-    },
-    {
-      "target": "darwin-x64",
-      "package": "@wreq-js/binding-darwin-x64",
-      "version": "3.2.0",
-      "platform": "darwin",
-      "arch": "x64",
-      "tarball": "https://registry.npmjs.org/@wreq-js/binding-darwin-x64/-/binding-darwin-x64-3.2.0.tgz",
-      "integrity": "sha512-89JkGsik49nUcQR7HfO6M+Na3whkhAQBghVFWn+vGmz32RzTX+HVy6q7wThjN+XGT+xvn9ZQpzTie3B292S50g==",
-      "path": "wreq-js.darwin-x64.node",
-      "size": 8249144,
-      "sha256": "ef00da7db372d5a71403a17f8067655f7313ae58816150ec4a00680546b35f27"
-    },
-    {
       "target": "linux-arm64-gnu",
       "package": "@wreq-js/binding-linux-arm64-gnu",
       "version": "3.2.0",
@@ -105,30 +81,6 @@
       "path": "wreq-js.linux-x64-musl.node",
       "size": 9036248,
       "sha256": "34c43f6694dfa5c749771f14bd19a4d4823707d428bc12d7d141ffa3176dccd6"
-    },
-    {
-      "target": "win32-arm64-msvc",
-      "package": "@wreq-js/binding-win32-arm64-msvc",
-      "version": "3.2.0",
-      "platform": "win32",
-      "arch": "arm64",
-      "tarball": "https://registry.npmjs.org/@wreq-js/binding-win32-arm64-msvc/-/binding-win32-arm64-msvc-3.2.0.tgz",
-      "integrity": "sha512-6bfaVFfbI61s5YLgQL+43uURk/VuOu7TPlUwY1l0Q9yJdWzD+Jpdokgl5cEiY2a0FEAw8Q4LqPI+XZT3YAMnQA==",
-      "path": "wreq-js.win32-arm64-msvc.node",
-      "size": 6994432,
-      "sha256": "c853e10e272f31d3e5bf3e14cf64a3bfb41ef94d428f895cb73a67f0c58c46fa"
-    },
-    {
-      "target": "win32-x64-msvc",
-      "package": "@wreq-js/binding-win32-x64-msvc",
-      "version": "3.2.0",
-      "platform": "win32",
-      "arch": "x64",
-      "tarball": "https://registry.npmjs.org/@wreq-js/binding-win32-x64-msvc/-/binding-win32-x64-msvc-3.2.0.tgz",
-      "integrity": "sha512-w4aktLElPgBXkWC/v9Ti9np6jBjYOzIyqmzgT41V/zuDq/V+V7s/13f9OzcX5hObH2WOpajo0KeljTJ2aRExNQ==",
-      "path": "wreq-js.win32-x64-msvc.node",
-      "size": 8003584,
-      "sha256": "2659898ee73ab64bb1ec4b4b1dd0c1e1d50f7dc579bad456d8bcad84349b01d4"
     }
   ],
   "rust": {

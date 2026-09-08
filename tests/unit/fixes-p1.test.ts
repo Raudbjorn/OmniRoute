@@ -8,14 +8,14 @@
 // limitation, not a defect in the code under test: the OmniRoute runtime itself
 // cascades to node:sqlite/sql.js when better-sqlite3 is unavailable. See
 // tests/unit/_helpers/betterSqlite3Availability.ts for a guard helper.
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import net from "node:net";
+import test from "node:test";
 
-const isWindows = process.platform === "win32";
+const isWindows = false;
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-fixes-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
 

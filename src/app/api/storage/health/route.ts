@@ -53,7 +53,7 @@ export async function GET() {
     }
 
     // Get the display path (abbreviated with ~)
-    const homeDir = process.env.HOME || process.env.USERPROFILE || "";
+    const homeDir = process.env.HOME || "";
     const displayPath = dbFilePath.startsWith(homeDir)
       ? "~" + dbFilePath.slice(homeDir.length)
       : dbFilePath;

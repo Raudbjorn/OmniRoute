@@ -18,13 +18,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import http from "node:http";
 import { createServer } from "node:net";
 import { join } from "node:path";
+import { sanitizeErrorMessage } from "../utils/error.ts";
 import {
   decodeAdobeJwtPayload,
   isAdobeUserAccessToken,
   looksLikeAdobeJwt,
 } from "./adobeFireflyClient.ts";
 import { isAdobeFireflyApiUrl, isAdobeLoginCookieDomain } from "./adobeFireflySecurity.ts";
-import { sanitizeErrorMessage } from "../utils/error.ts";
 
 /**
  * Loopback HTTP GET that MUST NOT use globalThis.fetch.
@@ -176,9 +176,7 @@ export function extractUserJwtFromStorageRaw(raw: string): string {
 function resolveAdobeFireflyDataRoot(): string {
   const dataRoot =
     String(process.env.DATA_DIR || process.env.OMNIROUTE_DATA_DIR || "").trim() ||
-    (process.env.LOCALAPPDATA
-      ? join(process.env.LOCALAPPDATA, "OmniRoute")
-      : join(process.cwd(), ".data"));
+    join(process.cwd(), ".data");
   mkdirSync(dataRoot, { recursive: true });
   return dataRoot;
 }
@@ -292,18 +290,7 @@ export function resolveSystemBrowserExecutable(): string | null {
   const configured = process.env.OMNIROUTE_LOGIN_BROWSER_PATH?.trim();
   if (configured && existsSync(configured)) return configured;
 
-  const pf = process.env.ProgramFiles || "C:\\Program Files";
-  const pf86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
-  const local = process.env.LOCALAPPDATA || "";
   const candidates = [
-    join(pf, "Google", "Chrome", "Application", "chrome.exe"),
-    join(pf86, "Google", "Chrome", "Application", "chrome.exe"),
-    join(local, "Google", "Chrome", "Application", "chrome.exe"),
-    join(pf, "Microsoft", "Edge", "Application", "msedge.exe"),
-    join(pf86, "Microsoft", "Edge", "Application", "msedge.exe"),
-    join(local, "Microsoft", "Edge", "Application", "msedge.exe"),
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
     "/usr/bin/google-chrome-stable",
     "/usr/bin/google-chrome",
     "/usr/bin/chromium-browser",
@@ -1038,15 +1025,7 @@ export function killProcessTree(
   const spawnFn = options?.spawnFn || spawn;
 
   try {
-    if (platform === "win32") {
-      // /T kills only this PID's descendants — not system Chrome profiles we did not spawn.
-      const killer = spawnFn("taskkill", ["/pid", String(pid), "/T", "/F"], {
-        stdio: "ignore",
-        windowsHide: true,
-        detached: true,
-      });
-      killer?.unref?.();
-    } else {
+    {
       let killedGroup = false;
       try {
         processKill(-pid, "SIGTERM");
@@ -1213,12 +1192,12 @@ async function runAdobeFireflyCdpBrowser(opts: {
       // (that was killing/wedging VibeProxyServices on Sign in with browser).
       // On POSIX: detached creates a new process group leader so killProcessTree(-pid)
       // can terminate Chrome and all its child processes (zygote/renderer/GPU).
-      const isDetached = process.platform !== "win32" || !opts.interactive;
+      const isDetached = true;
       child = spawn(browserPath, args, {
         stdio: "ignore",
         // Interactive sign-in: show Chrome. Background warm: hide spawn console/window
         // host; headless flags already suppress the browser UI.
-        windowsHide: !opts.interactive,
+
         detached: isDetached,
       });
       if (!opts.interactive) {

@@ -319,20 +319,6 @@ export function resolveVersionProbe(
   return { command, args };
 }
 
-export function shouldUseShellForVersionProbe(
-  command: string,
-  platform = process.platform
-): boolean {
-  if (platform !== "win32") return false;
-
-  const normalized = command.trim().toLowerCase();
-  if (!normalized) return false;
-
-  return (
-    normalized.endsWith(".cmd") || normalized.endsWith(".bat") || path.extname(normalized) === ""
-  );
-}
-
 /**
  * Detect a single agent by running its version command.
  */
@@ -353,7 +339,6 @@ function detectAgent(
       timeout: 5000,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-      ...(shouldUseShellForVersionProbe(probe.command) ? { shell: true } : {}),
     }).trim();
 
     // Extract version number from output

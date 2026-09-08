@@ -5,19 +5,19 @@
  * makes Next.js abort its instrumentation hook and leave every request as a
  * silent HTTP 500.
  */
-import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import {
+  ensureAndroidCacheDir,
+  formatAndroidInstrumentationFailureHint,
+  isFatalInstrumentationHookFailure,
   needsAndroidCacheDirPrep,
   resolveAndroidCacheDir,
-  ensureAndroidCacheDir,
-  isFatalInstrumentationHookFailure,
-  formatAndroidInstrumentationFailureHint,
 } from "../../bin/cli/utils/ensureAndroidCacheDir.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -53,22 +53,6 @@ test("resolveAndroidCacheDir: falls back to <homedir>/.cache", () => {
     resolveAndroidCacheDir(() => "/data/data/com.termux/files/home", {}),
     join("/data/data/com.termux/files/home", ".cache")
   );
-});
-
-test("ensureAndroidCacheDir: no-op on darwin (does not mkdir, does not set env)", () => {
-  const env = {};
-  const calls = [];
-  const result = ensureAndroidCacheDir({
-    platform: "darwin",
-    env,
-    mkdirSyncFn: (...args) => {
-      calls.push(args);
-    },
-    existsSyncFn: () => false,
-  });
-  assert.deepEqual(result, { prepared: false, cacheDir: null, created: false });
-  assert.equal(calls.length, 0);
-  assert.equal(env.XDG_CACHE_HOME, undefined);
 });
 
 test("ensureAndroidCacheDir: creates ~/.cache when missing on android", () => {

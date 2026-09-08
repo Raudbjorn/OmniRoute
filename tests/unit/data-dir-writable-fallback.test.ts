@@ -1,19 +1,19 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 
 import {
-  resolveWritableDataDir,
   getDefaultDataDir,
   resolveDataDir,
+  resolveWritableDataDir,
 } from "../../src/lib/dataPaths.ts";
 
 // Running as root bypasses POSIX permission bits, so a chmod-based "unwritable"
 // directory would still be writable and the EACCES/EPERM branch never triggers.
 const IS_ROOT = typeof process.getuid === "function" && process.getuid() === 0;
-const IS_WINDOWS = process.platform === "win32";
+const IS_WINDOWS = false;
 
 async function withTempEnv(fn: (paths: { root: string; home: string }) => void | Promise<void>) {
   const originalEnv = { ...process.env };

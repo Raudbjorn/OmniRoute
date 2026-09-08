@@ -3,7 +3,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { arch, platform, tmpdir } from "node:os";
+import { platform, tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -34,28 +34,6 @@ function sleep(ms) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
-function discoverMacExecutable() {
-  const distDir = join(ROOT, "electron", "dist-electron");
-  if (process.env.ELECTRON_SMOKE_APP_EXECUTABLE) {
-    return process.env.ELECTRON_SMOKE_APP_EXECUTABLE;
-  }
-
-  const candidates = [
-    join(
-      distDir,
-      arch() === "arm64" ? "mac-arm64" : "mac",
-      "OmniRoute.app",
-      "Contents",
-      "MacOS",
-      "OmniRoute"
-    ),
-    join(distDir, "mac", "OmniRoute.app", "Contents", "MacOS", "OmniRoute"),
-    join(distDir, "mac-arm64", "OmniRoute.app", "Contents", "MacOS", "OmniRoute"),
-  ];
-
-  return candidates.find((candidate) => existsSync(candidate)) || candidates[0];
-}
-
 function findExecutableByName(rootDir, names) {
   const pending = [rootDir];
   const wanted = new Set(names.map((name) => name.toLowerCase()));
@@ -82,21 +60,6 @@ function findExecutableByName(rootDir, names) {
   return null;
 }
 
-function discoverWindowsExecutable() {
-  const distDir = join(ROOT, "electron", "dist-electron");
-  const candidates = [
-    join(distDir, "win-unpacked", "OmniRoute.exe"),
-    join(distDir, "win-x64-unpacked", "OmniRoute.exe"),
-    join(distDir, "win-arm64-unpacked", "OmniRoute.exe"),
-  ];
-
-  return (
-    candidates.find((candidate) => existsSync(candidate)) ||
-    findExecutableByName(distDir, ["OmniRoute.exe"]) ||
-    candidates[0]
-  );
-}
-
 function discoverLinuxExecutable() {
   const distDir = join(ROOT, "electron", "dist-electron");
   const unpackedDirs = ["linux-unpacked", "linux-arm64-unpacked"];
@@ -116,8 +79,6 @@ function discoverPackagedExecutable() {
     return process.env.ELECTRON_SMOKE_APP_EXECUTABLE;
   }
 
-  if (platform() === "darwin") return discoverMacExecutable();
-  if (platform() === "win32") return discoverWindowsExecutable();
   if (platform() === "linux") return discoverLinuxExecutable();
 
   throw new Error(`Packaged Electron smoke check does not support ${platform()}.`);
@@ -245,7 +206,7 @@ async function waitForExit(child, timeoutMs) {
 }
 
 function isProcessGroupAlive(pid) {
-  if (!pid || platform() === "win32") return false;
+  if (!pid) return false;
 
   try {
     process.kill(-pid, 0);
@@ -258,7 +219,7 @@ function isProcessGroupAlive(pid) {
 }
 
 async function waitForProcessTreeExit(child, timeoutMs) {
-  if (!child.pid || platform() === "win32") {
+  if (!child.pid) {
     await waitForExit(child, timeoutMs);
     return;
   }
@@ -281,15 +242,6 @@ async function runQuietly(command, args) {
 async function signalProcessTree(child, signal) {
   if (!child.pid) return;
 
-  if (platform() === "win32") {
-    if (signal === "SIGKILL") {
-      await runQuietly("taskkill", ["/pid", String(child.pid), "/t", "/f"]);
-    } else {
-      child.kill(signal);
-    }
-    return;
-  }
-
   try {
     process.kill(-child.pid, signal);
   } catch (error) {
@@ -306,15 +258,6 @@ export async function stopApp(
   } = {}
 ) {
   if (!child.pid) return;
-
-  // On Windows, terminating only the direct Electron process can orphan the
-  // packaged server when the parent exits before the follow-up liveness check.
-  // Kill the process tree in one operation while the root PID is still valid.
-  if (currentPlatform === "win32") {
-    await signalProcessTreeFn(child, "SIGKILL");
-    await waitForProcessTreeExitFn(child, 2_000);
-    return;
-  }
 
   await signalProcessTreeFn(child, "SIGTERM");
   await waitForProcessTreeExitFn(child, 5_000);
@@ -364,13 +307,7 @@ export function buildSmokeEnv({
     }
   }
 
-  if (currentPlatform === "win32") {
-    smokeEnv.USERPROFILE = join(dataDir, "userprofile");
-    smokeEnv.APPDATA = join(dataDir, "AppData", "Roaming");
-    smokeEnv.LOCALAPPDATA = join(dataDir, "AppData", "Local");
-    smokeEnv.TEMP ||= join(dataDir, "tmp");
-    smokeEnv.TMP ||= smokeEnv.TEMP;
-  } else {
+  {
     smokeEnv.HOME = join(dataDir, "home");
     smokeEnv.XDG_CONFIG_HOME = join(dataDir, "config");
     smokeEnv.XDG_CACHE_HOME = join(dataDir, "cache");
@@ -385,9 +322,6 @@ export function buildSmokeEnv({
     ELECTRON_ENABLE_STACK_DUMPING: "1",
   };
 
-  // CI environments need sandbox disabled (GitHub Actions runners
-  // cannot configure SUID chrome-sandbox on Linux, and Windows
-  // runners may exit silently without it).
   if (parentEnv.CI) {
     baseEnv.CI = parentEnv.CI;
     baseEnv.ELECTRON_DISABLE_SANDBOX = "1";
@@ -403,17 +337,9 @@ function isInsideDir(parentDir, candidateDir) {
 }
 
 export async function ensureSmokeEnvDirs(smokeEnv, dataDir, { currentPlatform = platform() } = {}) {
-  // The win32 branches below must key off the SMOKE TARGET's platform, not the
-  // host's: tests (and any future cross-platform dry-run) inject a win32-shaped
-  // smokeEnv while running on a Linux CI host, and branching on the host
-  // platform() there silently skipped the USERPROFILE/APPDATA userData tree —
-  // exactly what this function exists to pre-create (#7592).
   const dirNames = [
     "DATA_DIR",
     "HOME",
-    "USERPROFILE",
-    "APPDATA",
-    "LOCALAPPDATA",
     "XDG_CONFIG_HOME",
     "XDG_CACHE_HOME",
     "XDG_DATA_HOME",
@@ -426,25 +352,6 @@ export async function ensureSmokeEnvDirs(smokeEnv, dataDir, { currentPlatform = 
       dirNames.map((name) => smokeEnv[name]).filter((dir) => dir && isInsideDir(dataDir, dir))
     ),
   ];
-
-  // On Windows, Electron derives its userData from APPDATA/<productName>.
-  // requestSingleInstanceLock() runs synchronously at module load and
-  // fails silently if the directory doesn't exist yet — causing exit(0).
-  if (currentPlatform === "win32" && smokeEnv.APPDATA) {
-    for (const subdir of ["omniroute-desktop", "OmniRoute", "omniroute"]) {
-      dirs.push(join(smokeEnv.APPDATA, subdir));
-    }
-  }
-  // Electron resolves the Roaming profile from %USERPROFILE%\AppData\Roaming
-  // (USERPROFILE takes precedence over the APPDATA env var) and the path
-  // service throws — rather than creates — when that directory is missing,
-  // which makes requestSingleInstanceLock() return false and the app exit(0)
-  // before app.whenReady(). Pre-create the derived tree as well.
-  if (currentPlatform === "win32" && smokeEnv.USERPROFILE) {
-    for (const subdir of ["omniroute-desktop", "OmniRoute", "omniroute"]) {
-      dirs.push(join(smokeEnv.USERPROFILE, "AppData", "Roaming", subdir));
-    }
-  }
 
   await Promise.all(dirs.map((dir) => mkdir(dir, { recursive: true })));
 }
@@ -474,9 +381,6 @@ function assertExecutableExists(appExecutable) {
   );
 }
 
-// ── CI sandbox workaround ──────────────────────────────────
-// GitHub Actions runners cannot set SUID on chrome-sandbox (Linux)
-// and Windows runners may fail silently without --no-sandbox.
 function buildCiSpawnArgs(currentPlatform = platform()) {
   if (!process.env.CI) return [];
 
@@ -588,7 +492,7 @@ async function launchAndCollectLogs({
 
   const logs = { value: "" };
   const child = spawn(appExecutable, spawnArgs, {
-    detached: platform() !== "win32",
+    detached: true,
     env: smokeEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });

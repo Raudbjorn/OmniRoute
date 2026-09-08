@@ -1,8 +1,8 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { test } from "node:test";
 import * as prebuildPlan from "../../scripts/build/electronRebuildPlan.mjs";
 
 const {
@@ -20,13 +20,6 @@ const {
 // `npx node-gyp rebuild` spawn plan (whose win32 .cmd/shell quirk broke the
 // v3.8.47 tag build — that entire code path is now gone).
 
-test("prebuild file name mirrors better-sqlite3 lib/binding.js selection", () => {
-  assert.equal(sqlitePrebuildFileName("darwin", "arm64"), "darwin-arm64.node");
-  assert.equal(sqlitePrebuildFileName("darwin", "x64"), "darwin-x64.node");
-  assert.equal(sqlitePrebuildFileName("win32", "x64"), "win32-x64.node");
-  assert.equal(sqlitePrebuildFileName("win32", "arm64"), "win32-arm64.node");
-});
-
 test("linux resolves to the musl prebuild when glibcVersionRuntime is absent", () => {
   // glibc build (GitHub ubuntu runner): header carries the runtime glibc version
   assert.equal(
@@ -39,20 +32,20 @@ test("linux resolves to the musl prebuild when glibcVersionRuntime is absent", (
 });
 
 test("prebuild support covers exactly the packaged platform/arch matrix", () => {
-  for (const platform of ["darwin", "linux", "win32"]) {
+  for (const platform of ["linux"]) {
     for (const arch of ["x64", "arm64"]) {
       assert.equal(isSqlitePrebuildSupported(platform, arch), true);
     }
   }
   assert.equal(isSqlitePrebuildSupported("freebsd", "x64"), false);
-  assert.equal(isSqlitePrebuildSupported("darwin", "ia32"), false);
+  assert.equal(isSqlitePrebuildSupported("linux", "ia32"), false);
 });
 
 test("packaged platform matrix matches the shipped prebuild inventory", () => {
   // better-sqlite3 v13 prebuilds/: darwin/linux/linuxmusl/win32 × x64/arm64.
   // The build fails fast when the prebuild for the CURRENT platform is missing,
   // so this matrix must stay in sync with the npm tarball contents.
-  assert.deepEqual(SQLITE_PREBUILD_PLATFORMS, ["darwin", "linux", "linuxmusl", "win32"]);
+  assert.deepEqual(SQLITE_PREBUILD_PLATFORMS, ["linux", "linuxmusl"]);
   assert.deepEqual(SQLITE_PREBUILD_ARCHS, ["x64", "arm64"]);
 });
 
@@ -72,14 +65,18 @@ test("prebuild verification fails fast when the selected binary is missing", () 
   const moduleDir = fs.mkdtempSync(path.join(os.tmpdir(), "sqlite-prebuild-"));
   try {
     assert.throws(
-      () => assertSqlitePrebuildExists?.(moduleDir, "darwin", "arm64"),
-      /better-sqlite3 prebuild missing for darwin-arm64/
+      () =>
+        assertSqlitePrebuildExists?.(moduleDir, "linux", "arm64", { glibcVersionRuntime: "2.39" }),
+      /better-sqlite3 prebuild missing for linux-arm64/
     );
 
-    const expected = path.join(moduleDir, "prebuilds", "darwin-arm64.node");
+    const expected = path.join(moduleDir, "prebuilds", "linux-arm64.node");
     fs.mkdirSync(path.dirname(expected), { recursive: true });
     fs.writeFileSync(expected, "napi");
-    assert.equal(assertSqlitePrebuildExists?.(moduleDir, "darwin", "arm64"), expected);
+    assert.equal(
+      assertSqlitePrebuildExists?.(moduleDir, "linux", "arm64", { glibcVersionRuntime: "2.39" }),
+      expected
+    );
   } finally {
     fs.rmSync(moduleDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }

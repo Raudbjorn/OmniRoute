@@ -9,47 +9,7 @@ import {
   type Locator,
   type Page,
 } from "playwright-core";
-import {
-  atomicWriteFile,
-  CHATGPT_CONNECTOR_NAME,
-  defaultChromeExecutable,
-  DEV_CHATGPT_CONNECTOR_NAME,
-  expandUserPath,
-  getConfigDir,
-  isLegacyChatGptConnectorName,
-  legacyChatGptConnectorMigrationMessage,
-  LEGACY_CHATGPT_CONNECTOR_NAMES,
-} from "../../config";
-import { estimateTokens } from "../../lib/token-estimate";
-import type { CodexProviderConfig } from "../../types";
-import { parseDataUrl } from "../image";
-import {
-  ChatGptMarkdownBuffer,
-  ChatGptMarkdownConsistencyError,
-  type ChatGptMarkdownSegment,
-} from "./markdown";
-import {
-  CHATGPT_WEB_LUNA_MODEL_ID,
-  CHATGPT_WEB_MODEL_ID,
-  resolveChatGptWebModelMode,
-  type ChatGptWebCapabilities,
-  type ChatGptWebModelMode,
-} from "./model";
-import {
-  CHATGPT_LUNA_BROWSER_INPUT_TOKEN_BUDGET,
-  compiledChatGptWebMaxMessageChars,
-  estimateCompiledChatGptWebMessageTokens,
-} from "./input-tokens";
-import {
-  CHATGPT_MAX_INPUT_IMAGES,
-  formatChatGptWebMultipartCommit,
-  formatChatGptWebMultipartStage,
-  type CompiledChatGptWebPrompt,
-  type ChatGptWebPromptFile,
-  type ChatGptWebPromptImage,
-  type ChatGptWebMultipartStage,
-} from "./prompt";
-import { estimateCompiledChatGptWebInputTokens } from "./input-tokens";
+import { loginVerificationMarkerPath } from "../../browser-login";
 import {
   assertAuthenticatedChatGptPage,
   assertTemporaryChatPage,
@@ -66,31 +26,38 @@ import {
   detectChatGptAccountCapabilities,
   parseChatGptEffortSliderState,
 } from "../../chatgpt-session";
-import { loginVerificationMarkerPath } from "../../browser-login";
-import {
-  connectLauncherBrowserHost,
-  LauncherBrowserTurnCancelledError,
-  LauncherRetainedConversationUnavailableError,
-  LAUNCHER_TURN_HEARTBEAT_INTERVAL_MS,
-  LAUNCHER_TURN_HEARTBEAT_TIMEOUT_MS,
-  notifyLauncherTurn,
-} from "../../launcher-browser-host";
 import {
   resolveChatGptWebContextLimits,
   resolveChatGptWebTransportLimits,
 } from "../../chatgpt-web-models";
-import { LauncherBrowserHelperClient } from "./launcher-helper-client";
-import { MAX_CHATGPT_BROWSER_TABS } from "./concurrency";
 import {
-  ChatGptWebAdapterError,
+  atomicWriteFile,
+  CHATGPT_CONNECTOR_NAME,
+  defaultChromeExecutable,
+  DEV_CHATGPT_CONNECTOR_NAME,
+  expandUserPath,
+  getConfigDir,
+  isLegacyChatGptConnectorName,
+  LEGACY_CHATGPT_CONNECTOR_NAMES,
+  legacyChatGptConnectorMigrationMessage,
+} from "../../config";
+import {
+  connectLauncherBrowserHost,
+  LAUNCHER_TURN_HEARTBEAT_INTERVAL_MS,
+  LAUNCHER_TURN_HEARTBEAT_TIMEOUT_MS,
+  LauncherBrowserTurnCancelledError,
+  LauncherRetainedConversationUnavailableError,
+  notifyLauncherTurn,
+} from "../../launcher-browser-host";
+import { estimateTokens } from "../../lib/token-estimate";
+import type { CodexProviderConfig } from "../../types";
+import { parseDataUrl } from "../image";
+import {
   chatGptBrowserTabClosedError,
   chatGptRetainedConversationUnavailableError,
   chatGptStoppedThinkingError,
+  ChatGptWebAdapterError,
 } from "./adapter-error";
-import {
-  ChatGptLunaCheckpointStream,
-  type CapturedChatGptLunaCheckpoint,
-} from "./rolling-checkpoint";
 import {
   ChatGptBrowserDiagnostics,
   ChatGptBrowserObservationTimeoutError,
@@ -98,11 +65,44 @@ import {
   withChatGptBrowserObservationTimeout,
 } from "./browser-diagnostics";
 import { insertPlainTextIntoComposer } from "./composer-edit";
-import { chatGptExternalProgressIsLive } from "./turn-progress";
+import { MAX_CHATGPT_BROWSER_TABS } from "./concurrency";
+import {
+  CHATGPT_LUNA_BROWSER_INPUT_TOKEN_BUDGET,
+  compiledChatGptWebMaxMessageChars,
+  estimateCompiledChatGptWebInputTokens,
+  estimateCompiledChatGptWebMessageTokens,
+} from "./input-tokens";
+import { LauncherBrowserHelperClient } from "./launcher-helper-client";
+import {
+  ChatGptMarkdownBuffer,
+  ChatGptMarkdownConsistencyError,
+  type ChatGptMarkdownSegment,
+} from "./markdown";
+import {
+  CHATGPT_WEB_LUNA_MODEL_ID,
+  CHATGPT_WEB_MODEL_ID,
+  resolveChatGptWebModelMode,
+  type ChatGptWebCapabilities,
+  type ChatGptWebModelMode,
+} from "./model";
+import {
+  CHATGPT_MAX_INPUT_IMAGES,
+  formatChatGptWebMultipartCommit,
+  formatChatGptWebMultipartStage,
+  type ChatGptWebMultipartStage,
+  type ChatGptWebPromptFile,
+  type ChatGptWebPromptImage,
+  type CompiledChatGptWebPrompt,
+} from "./prompt";
+import {
+  ChatGptLunaCheckpointStream,
+  type CapturedChatGptLunaCheckpoint,
+} from "./rolling-checkpoint";
 import type {
   ChatGptExternalTurnProgressSnapshot,
   ChatGptTurnProgressReader,
 } from "./turn-progress";
+import { chatGptExternalProgressIsLive } from "./turn-progress";
 
 export { MAX_CHATGPT_BROWSER_TABS } from "./concurrency";
 
@@ -889,8 +889,7 @@ async function waitForOperationalChatGptViewport(page: Page, signal?: AbortSigna
   }
 }
 
-export const CHATGPT_COMPOSER_DOCUMENT_END_KEY =
-  process.platform === "darwin" ? "Meta+ArrowDown" : "Control+End";
+export const CHATGPT_COMPOSER_DOCUMENT_END_KEY = "Control+End";
 
 function throwIfPromptAttachmentAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new DOMException("ChatGPT prompt attachment aborted", "AbortError");

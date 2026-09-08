@@ -1,17 +1,17 @@
-import { describe, it, beforeEach, afterEach } from "node:test";
+import {
+  cursorDbCandidatePaths,
+  extractCursorTokensFromRows,
+  fuzzyExtractCursorTokensFromRows,
+  normalizeVscDbValue,
+  tryAgentAuth,
+  tryIdeAuth,
+  verifyLinuxCursorInstalled,
+} from "@/lib/cursor/tokenExtractor";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import {
-  normalizeVscDbValue,
-  extractCursorTokensFromRows,
-  fuzzyExtractCursorTokensFromRows,
-  cursorDbCandidatePaths,
-  verifyLinuxCursorInstalled,
-  tryAgentAuth,
-  tryIdeAuth,
-} from "@/lib/cursor/tokenExtractor";
+import { afterEach, beforeEach, describe, it } from "node:test";
 
 describe("normalizeVscDbValue", () => {
   it("unwraps a JSON-encoded string", () => {
@@ -128,25 +128,9 @@ describe("fuzzyExtractCursorTokensFromRows", () => {
 });
 
 describe("cursorDbCandidatePaths", () => {
-  it("returns standard + Insiders paths on macOS", () => {
-    const paths = cursorDbCandidatePaths("darwin", { home: "/Users/test" });
-    assert.equal(paths.length, 2);
-    assert.ok(paths[0].includes("Cursor/User/globalStorage/state.vscdb"));
-    assert.ok(paths[1].includes("Cursor - Insiders/User/globalStorage/state.vscdb"));
-  });
-
   it("returns a single path on Linux", () => {
     const paths = cursorDbCandidatePaths("linux", { home: "/home/test" });
     assert.deepEqual(paths, ["/home/test/.config/Cursor/User/globalStorage/state.vscdb"]);
-  });
-
-  it("returns a single path on Windows using APPDATA", () => {
-    const paths = cursorDbCandidatePaths("win32", {
-      home: "C:/Users/test",
-      appdata: "C:/Users/test/AppData/Roaming",
-    });
-    assert.equal(paths.length, 1);
-    assert.ok(paths[0].includes("Cursor/User/globalStorage/state.vscdb"));
   });
 
   it("returns empty array for unsupported platforms", () => {
@@ -347,72 +331,5 @@ describe("tryIdeAuth", () => {
     const result = await tryIdeAuth();
     assert.equal(result.found, false);
     assert.equal(result.error, "Unsupported platform");
-  });
-
-  // The following exercise the SUPPORTED-platform dispatch branch through to a
-  // real tryOpenSync() call. mock.module() is unavailable in this tsx/ESM +
-  // Node native test-runner setup (see tests/unit/token-health-check-sweep.test.ts),
-  // and tryIdeAuth() takes no injectable options — so instead of mocking the
-  // driver, these seed a REAL sqlite file at the exact candidate path via the
-  // same resilient driver factory (openDatabaseAsync), matching the technique
-  // tests/unit/db-import-resilient-driver-3025.test.ts already uses.
-  describe("on a supported platform (darwin), against a real state.vscdb", () => {
-    beforeEach(() => {
-      Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
-      tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-cursor-ide-auth-"));
-      process.env.HOME = tmpHome;
-      process.env.USERPROFILE = tmpHome;
-    });
-
-    it("finds tokens when the real database contains the expected keys", async () => {
-      const dbPath = cursorDbCandidatePaths("darwin", { home: tmpHome as string })[0];
-      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-
-      const { openDatabaseAsync } = await import("@/lib/db/adapters/driverFactory");
-      const seed = await openDatabaseAsync(dbPath);
-      seed.exec("CREATE TABLE itemTable (key TEXT PRIMARY KEY, value TEXT)");
-      seed
-        .prepare("INSERT INTO itemTable (key, value) VALUES (?, ?)")
-        .run("cursorAuth/accessToken", "found-token");
-      seed
-        .prepare("INSERT INTO itemTable (key, value) VALUES (?, ?)")
-        .run("storage.serviceMachineId", "found-machine");
-      seed.close();
-
-      const result = await tryIdeAuth();
-      assert.equal(result.found, true);
-      assert.equal(result.accessToken, "found-token");
-      assert.equal(result.machineId, "found-machine");
-      assert.equal(result.source, "cursor-ide");
-    });
-
-    it("reports tokens not found when the real database has no matching keys", async () => {
-      const dbPath = cursorDbCandidatePaths("darwin", { home: tmpHome as string })[0];
-      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-
-      const { openDatabaseAsync } = await import("@/lib/db/adapters/driverFactory");
-      const seed = await openDatabaseAsync(dbPath);
-      seed.exec("CREATE TABLE itemTable (key TEXT PRIMARY KEY, value TEXT)");
-      seed.prepare("INSERT INTO itemTable (key, value) VALUES (?, ?)").run("irrelevant.key", "x");
-      seed.close();
-
-      const result = await tryIdeAuth();
-      assert.equal(result.found, false);
-      assert.equal(result.error, "Tokens not found in database");
-    });
-
-    it("reports a db-open failure (not a thrown exception) when the file is not a valid sqlite database", async () => {
-      // better-sqlite3's Database constructor opens lazily — it does not
-      // validate the file format until the first prepare()/query, so this
-      // exercises the query-time catch block (SQLITE_NOTADB), not the
-      // upfront `!db` "(driver unavailable)" branch.
-      const dbPath = cursorDbCandidatePaths("darwin", { home: tmpHome as string })[0];
-      fs.mkdirSync(path.dirname(dbPath), { recursive: true });
-      fs.writeFileSync(dbPath, "not a real sqlite database file");
-
-      const result = await tryIdeAuth();
-      assert.equal(result.found, false);
-      assert.equal(result.error, "Failed to read database");
-    });
   });
 });

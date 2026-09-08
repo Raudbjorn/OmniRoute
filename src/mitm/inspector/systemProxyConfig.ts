@@ -1,31 +1,7 @@
-/**
- * System-wide proxy configuration toggles.
- *
- * macOS:    `networksetup -setwebproxy / -setsecurewebproxy`
- * Linux:    `gsettings set org.gnome.system.proxy.<scheme> host/port` + mode
- * Windows:  `netsh winhttp set proxy <host:port>`
- *
- * Hard Rule #13: every shell invocation here uses `execFile` with an array of
- * arguments (never a shell string), so runtime values cannot be interpreted
- * as shell syntax.
- *
- * The returned `previousState` is JSON-serialisable so callers can persist it
- * (DB row) and pass it back to `revert()` later — including across process
- * restarts (the operator-facing "Restore system proxy" button).
- */
-
 import { execFile, type ExecFileOptions } from "node:child_process";
-import os from "node:os";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 
-export type Platform = "linux" | "macos" | "windows";
-
-export interface MacOsPreviousState {
-  platform: "macos";
-  service: string;
-  http: { enabled: boolean; host: string; port: string };
-  https: { enabled: boolean; host: string; port: string };
-}
+export type Platform = "linux";
 
 export interface LinuxPreviousState {
   platform: "linux";
@@ -36,12 +12,7 @@ export interface LinuxPreviousState {
   httpsPort: string;
 }
 
-export interface WindowsPreviousState {
-  platform: "windows";
-  netshOutput: string;
-}
-
-export type PreviousState = MacOsPreviousState | LinuxPreviousState | WindowsPreviousState;
+export type PreviousState = LinuxPreviousState;
 
 export interface ApplyResult {
   platform: Platform;
@@ -64,7 +35,7 @@ function defaultExec(
   options: ExecFileOptions = {}
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(file, args, { windowsHide: true, ...options }, (err, stdout, stderr) => {
+    execFile(file, args, { ...options }, (err, stdout, stderr) => {
       if (err) {
         reject(err);
         return;
@@ -87,82 +58,6 @@ export function __setExec(fn: ExecFileFn): () => void {
   return () => {
     execImpl = prev;
   };
-}
-
-function detectPlatform(): Platform {
-  const p = os.platform();
-  if (p === "darwin") return "macos";
-  if (p === "win32") return "windows";
-  return "linux";
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// macOS — networksetup
-// ────────────────────────────────────────────────────────────────────────────
-
-const MAC_DEFAULT_SERVICE = "Wi-Fi";
-
-interface NetworksetupRead {
-  enabled: boolean;
-  host: string;
-  port: string;
-}
-
-function parseNetworksetupGet(output: string): NetworksetupRead {
-  // Example output:
-  //   Enabled: Yes
-  //   Server: 192.168.1.1
-  //   Port: 3128
-  //   Authenticated Proxy Enabled: 0
-  const lines = output.split(/\r?\n/);
-  let enabled = false;
-  let host = "";
-  let port = "";
-  for (const line of lines) {
-    const m = line.match(/^(\S[^:]*):\s*(.*)$/);
-    if (!m) continue;
-    const key = m[1].trim().toLowerCase();
-    const val = m[2].trim();
-    if (key === "enabled") enabled = /yes/i.test(val);
-    else if (key === "server") host = val;
-    else if (key === "port") port = val;
-  }
-  return { enabled, host, port };
-}
-
-async function macosApply(port: number): Promise<MacOsPreviousState> {
-  const service = MAC_DEFAULT_SERVICE;
-  const httpGet = await execImpl("networksetup", ["-getwebproxy", service]);
-  const httpsGet = await execImpl("networksetup", ["-getsecurewebproxy", service]);
-  const previousState: MacOsPreviousState = {
-    platform: "macos",
-    service,
-    http: parseNetworksetupGet(httpGet.stdout),
-    https: parseNetworksetupGet(httpsGet.stdout),
-  };
-
-  await execImpl("networksetup", ["-setwebproxy", service, "127.0.0.1", String(port)]);
-  await execImpl("networksetup", ["-setsecurewebproxy", service, "127.0.0.1", String(port)]);
-  return previousState;
-}
-
-async function macosRevert(state: MacOsPreviousState): Promise<void> {
-  const service = state.service;
-  if (state.http.enabled && state.http.host && state.http.port) {
-    await execImpl("networksetup", ["-setwebproxy", service, state.http.host, state.http.port]);
-  } else {
-    await execImpl("networksetup", ["-setwebproxystate", service, "off"]);
-  }
-  if (state.https.enabled && state.https.host && state.https.port) {
-    await execImpl("networksetup", [
-      "-setsecurewebproxy",
-      service,
-      state.https.host,
-      state.https.port,
-    ]);
-  } else {
-    await execImpl("networksetup", ["-setsecurewebproxystate", service, "off"]);
-  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -229,30 +124,6 @@ async function linuxRevert(state: LinuxPreviousState): Promise<void> {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Windows — netsh winhttp
-// ────────────────────────────────────────────────────────────────────────────
-
-async function windowsApply(port: number): Promise<WindowsPreviousState> {
-  const showRes = await execImpl("netsh", ["winhttp", "show", "proxy"]);
-  const previousState: WindowsPreviousState = {
-    platform: "windows",
-    netshOutput: showRes.stdout,
-  };
-  // HR#13: concat (not template) — port is Zod-validated number (z.number().int().positive().max(65535)).
-  const proxyArg = "127.0.0.1:" + String(port);
-  await execImpl("netsh", ["winhttp", "set", "proxy", proxyArg]);
-  return previousState;
-}
-
-async function windowsRevert(_state: WindowsPreviousState): Promise<void> {
-  // netsh has no idempotent restore; the safe default is "reset".
-  // The previousState is preserved so the UI can show the operator what was
-  // configured before, but actual reapply of obscure netsh state is out of
-  // scope.
-  await execImpl("netsh", ["winhttp", "reset", "proxy"]);
-}
-
-// ────────────────────────────────────────────────────────────────────────────
 // Public API
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -264,12 +135,9 @@ async function windowsRevert(_state: WindowsPreviousState): Promise<void> {
  * leakage — see Hard Rule #12).
  */
 export async function apply(port: number): Promise<ApplyResult> {
-  const platform = detectPlatform();
+  const platform: Platform = "linux";
   try {
-    let previousState: PreviousState;
-    if (platform === "macos") previousState = await macosApply(port);
-    else if (platform === "windows") previousState = await windowsApply(port);
-    else previousState = await linuxApply(port);
+    const previousState = await linuxApply(port);
     return { platform, previousState };
   } catch (err) {
     throw new Error(sanitizeErrorMessage(err) || "system proxy apply failed");
@@ -285,9 +153,7 @@ export async function revert(previousState: PreviousState | unknown): Promise<vo
   const state = previousState as Record<string, unknown>;
   const platform = state.platform;
   try {
-    if (platform === "macos") await macosRevert(state as unknown as MacOsPreviousState);
-    else if (platform === "linux") await linuxRevert(state as unknown as LinuxPreviousState);
-    else if (platform === "windows") await windowsRevert(state as unknown as WindowsPreviousState);
+    if (platform === "linux") await linuxRevert(state as unknown as LinuxPreviousState);
   } catch (err) {
     throw new Error(sanitizeErrorMessage(err) || "system proxy revert failed");
   }

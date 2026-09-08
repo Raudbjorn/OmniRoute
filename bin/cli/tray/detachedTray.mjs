@@ -1,6 +1,6 @@
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { createServer, connect } from "node:net";
+import { connect, createServer } from "node:net";
 
 /** Builds arguments for the hidden process that owns the server and tray. */
 export function buildTrayWorkerArgs({ port, maxRestarts, readyPort, readyToken, tlsCert, tlsKey }) {
@@ -25,17 +25,10 @@ export function buildTrayWorkerArgs({ port, maxRestarts, readyPort, readyToken, 
 
 /** Builds the platform command that starts the hidden tray worker. */
 export function buildTrayLaunch({ platform, execPath, cliPath, workerArgs, label }) {
-  if (platform === "darwin") {
-    return {
-      command: "launchctl",
-      args: ["submit", "-l", label, "--", execPath, cliPath, ...workerArgs],
-      options: { stdio: "ignore" },
-    };
-  }
   return {
     command: execPath,
     args: [cliPath, ...workerArgs],
-    options: { detached: true, stdio: "ignore", windowsHide: true },
+    options: { detached: true, stdio: "ignore" },
   };
 }
 
@@ -144,27 +137,17 @@ export async function startDetachedTray(
   const spawnFailure = new Promise((_, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => {
-      if (platform !== "darwin" || code !== 0) {
+      {
         reject(new Error(`Tray worker exited before readiness with code ${code ?? "unknown"}`));
       }
     });
   });
-  if (platform !== "darwin") child.unref?.();
+  child.unref?.();
   try {
     await Promise.race([readiness.wait(timeoutMs), spawnFailure]);
-    return { platform, pid: child.pid, label: platform === "darwin" ? label : null };
+    return { platform, pid: child.pid, label: null };
   } catch (err) {
-    if (platform === "darwin") {
-      try {
-        execFileSync("launchctl", ["bootout", `gui/${process.getuid()}/${label}`], {
-          stdio: "ignore",
-        });
-      } catch {}
-    } else if (platform === "win32" && child.pid) {
-      try {
-        execFileSync("taskkill", ["/PID", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-      } catch {}
-    } else if (child.pid) {
+    if (child.pid) {
       try {
         process.kill(child.pid, "SIGTERM");
       } catch {}

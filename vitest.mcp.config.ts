@@ -26,9 +26,6 @@ export default defineConfig({
       "src/app/(dashboard)/**/__tests__/**/*.test.tsx",
     ],
     exclude: ["**/node_modules/**", "**/.git/**"],
-    coverage: {
-      reportsDirectory: "coverage",
-    },
   },
   resolve: {
     alias: {

@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { BaseExecutor, type ExecuteInput } from "./base.ts";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { DEVIN_MODEL_CATALOG } from "../config/providers/registry/devin/catalog.ts";
 import { buildErrorBody, sanitizeErrorMessage } from "../utils/error.ts";
+import { BaseExecutor, type ExecuteInput } from "./base.ts";
 import {
   buildClaudeSseFrames,
   buildClaudeTextResponse,
@@ -84,13 +84,6 @@ const CLAUDE_ENV_BLOCKLIST = [
 function resolveDevinBin(): string {
   const envBin = process.env.CLI_DEVIN_AGENTIC_BIN?.trim() || process.env.CLI_DEVIN_BIN?.trim();
   if (envBin) return envBin;
-
-  if (process.platform === "win32") {
-    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
-    const winPath = path.join(localAppData, "devin", "cli", "bin", "devin.exe");
-    if (fs.existsSync(winPath)) return winPath;
-    return "devin.exe";
-  }
 
   for (const candidate of [
     path.join(os.homedir(), ".local", "share", "devin", "bin", "devin"),

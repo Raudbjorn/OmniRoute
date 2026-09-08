@@ -1,11 +1,11 @@
-import path from "path";
-import os from "os";
 import fs from "fs";
+import os from "os";
+import path from "path";
 
 export const APP_NAME = "omniroute";
 
 function fallbackHomeDir() {
-  const envHome = process.env.HOME || process.env.USERPROFILE;
+  const envHome = process.env.HOME;
   if (typeof envHome === "string" && envHome.trim().length > 0) {
     return path.resolve(envHome);
   }
@@ -36,7 +36,6 @@ export function getDefaultDataDir() {
   const homeDir = safeHomeDir();
   const legacyDir = getLegacyDotDataDir();
 
-  // Preserve legacy path if it exists to avoid data loss on updates (e.g., Windows migration)
   if (fs.existsSync(legacyDir)) {
     try {
       if (fs.statSync(legacyDir).isDirectory()) {
@@ -47,12 +46,6 @@ export function getDefaultDataDir() {
     }
   }
 
-  if (process.platform === "win32") {
-    const appData = process.env.APPDATA || path.join(homeDir, "AppData", "Roaming");
-    return path.join(appData, APP_NAME);
-  }
-
-  // Support XDG on Linux/macOS when explicitly configured.
   const xdgConfigHome = normalizeConfiguredPath(process.env.XDG_CONFIG_HOME);
   if (xdgConfigHome) {
     return path.join(xdgConfigHome, APP_NAME);
@@ -194,10 +187,6 @@ export function isSamePath(a: string | null | undefined, b: string | null | unde
   if (!a || !b) return false;
   const normalizedA = path.resolve(a);
   const normalizedB = path.resolve(b);
-
-  if (process.platform === "win32") {
-    return normalizedA.toLowerCase() === normalizedB.toLowerCase();
-  }
 
   return normalizedA === normalizedB;
 }

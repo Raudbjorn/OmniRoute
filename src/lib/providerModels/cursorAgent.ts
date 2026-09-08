@@ -14,7 +14,7 @@ export function runCursorAgent(
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawn(binary, args, { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+      child = spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] });
     } catch (err) {
       reject(err);
       return;

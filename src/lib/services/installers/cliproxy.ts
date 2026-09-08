@@ -10,13 +10,12 @@
  * DB row:          version_manager WHERE tool = 'cliproxy'
  */
 
-import fs from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import { DATA_DIR } from "@/lib/db/core";
 import { upsertVersionManagerTool } from "@/lib/db/versionManager";
+import { getCurrentBinaryPath, installVersion } from "@/lib/versionManager/binaryManager.ts";
 import { getLatestRelease } from "@/lib/versionManager/releaseChecker.ts";
-import { installVersion, getCurrentBinaryPath } from "@/lib/versionManager/binaryManager.ts";
+import fs from "node:fs";
+import path from "node:path";
 
 export const CLIPROXY_DEFAULT_PORT = 8317;
 
@@ -102,12 +101,7 @@ export async function update(): Promise<InstallResult> {
  * async file I/O is not available here.
  */
 export function resolveSpawnArgs(port: number, managementKey?: string): SpawnArgs {
-  // #11236 (bug 3 residual): runtime os.platform() read — a process.platform
-  // literal here is constant-folded to the Linux build machine when the
-  // published artifact is bundled, dropping the `.exe` suffix from the spawn
-  // path on Windows and failing with ENOENT even when a valid .exe exists
-  // (same fold class as b43a212680 / #10244/#10293).
-  const executableName = os.platform() === "win32" ? "cliproxyapi.exe" : "cliproxyapi";
+  const executableName = "cliproxyapi";
   const symlinkPath = path.join(BIN_DIR, executableName);
 
   fs.mkdirSync(CONFIG_DIR, { recursive: true });

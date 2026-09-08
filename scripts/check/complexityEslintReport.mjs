@@ -14,12 +14,7 @@ const CONFIG_PATH = path.join(ROOT, "eslint.complexity-ratchets.config.mjs");
 /** Positional dirs — must match config `files` scopes (see check-complexity tests). */
 export const ESLINT_SCAN_DIRS = ["src", "open-sse", "electron", "bin"];
 
-const ESLINT_BIN = path.join(
-  ROOT,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "eslint.cmd" : "eslint"
-);
+const ESLINT_BIN = path.join(ROOT, "node_modules", ".bin", "eslint");
 
 /** Args after the eslint binary (tests lock scan dirs on this array). */
 export const ESLINT_ARGS = [
@@ -77,12 +72,11 @@ export function getComplexityEslintReport() {
 
   let stdout;
   try {
-    // Prefer local bin (Windows-safe); shell only needed for .cmd shims.
     stdout = execFileSync(ESLINT_BIN, ESLINT_ARGS, {
       cwd: ROOT,
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
-      shell: process.platform === "win32",
+      shell: false,
     });
   } catch (err) {
     stdout = err.stdout ? String(err.stdout) : "";
@@ -129,7 +123,7 @@ export function runComplexityEslintOn(files, cwd = ROOT) {
       cwd,
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
-      shell: process.platform === "win32",
+      shell: false,
     });
   } catch (err) {
     stdout = err.stdout ? String(err.stdout) : "";

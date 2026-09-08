@@ -40,5 +40,5 @@ export function unescapeWindowsShellArg(arg) {
  */
 export function logicalArgs(args, platform = process.platform) {
   const list = [...(args ?? [])].map(String);
-  return platform === "win32" ? list.map(unescapeWindowsShellArg) : list;
+  return list;
 }

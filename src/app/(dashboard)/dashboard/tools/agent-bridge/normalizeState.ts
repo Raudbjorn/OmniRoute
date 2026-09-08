@@ -77,9 +77,6 @@ export function normalizeAgentBridgeState(raw: unknown): AgentBridgePageData {
     if (typeof source.needsSudoPassword === "boolean") {
       serverState.needsSudoPassword = source.needsSudoPassword;
     }
-    if (typeof source.isWin === "boolean") {
-      serverState.isWin = source.isWin;
-    }
   }
 
   return {

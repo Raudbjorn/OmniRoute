@@ -139,7 +139,6 @@ export const defaultRunner: VideoCommandRunner = async (executable, args, option
     maxBuffer: 1024 * 1024,
     signal: options.signal,
     timeout: options.timeoutMs,
-    windowsHide: true,
   });
   return { stdout: String(result.stdout), stderr: String(result.stderr) };
 };
