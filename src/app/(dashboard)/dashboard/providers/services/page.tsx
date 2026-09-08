@@ -9,9 +9,12 @@ import { MuxServiceTab } from "./tabs/MuxServiceTab";
 import { BifrostServiceTab } from "./tabs/BifrostServiceTab";
 import { DarioServiceTab } from "./tabs/DarioServiceTab";
 
-type Tab = "cliproxy" | "9router" | "mux" | "bifrost" | "dario";
+import { LlmlinguaServiceTab } from "./tabs/LlmlinguaServiceTab";
+
+type Tab = "cliproxy" | "9router" | "mux" | "bifrost" | "dario" | "llmlingua";
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: "llmlingua", label: "LLMLingua", icon: "compress" },
   { id: "cliproxy", label: "CLIProxyAPI", icon: "swap_horiz" },
   { id: "9router", label: "9Router", icon: "route" },
   { id: "mux", label: "Mux", icon: "hub" },
@@ -64,6 +67,7 @@ export default function ServicesPage() {
         {active === "mux" && <MuxServiceTab />}
         {active === "bifrost" && <BifrostServiceTab />}
         {active === "dario" && <DarioServiceTab />}
+        {active === "llmlingua" && <LlmlinguaServiceTab />}
       </div>
     </div>
   );

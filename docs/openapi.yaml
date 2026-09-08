@@ -290,6 +290,98 @@ tags:
     description: Webhooks endpoints (generated route coverage)
 
 paths:
+  /api/services/llmlingua/install:
+    post:
+      x-loopback-only: true
+      summary: LLMLingua install (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+  /api/services/llmlingua/start:
+    post:
+      x-loopback-only: true
+      summary: LLMLingua start (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+  /api/services/llmlingua/stop:
+    post:
+      x-loopback-only: true
+      summary: LLMLingua stop (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+  /api/services/llmlingua/restart:
+    post:
+      x-loopback-only: true
+      summary: LLMLingua restart (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+  /api/services/llmlingua/update:
+    post:
+      x-loopback-only: true
+      summary: LLMLingua update (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+  /api/services/llmlingua/status:
+    get:
+      x-loopback-only: true
+      summary: LLMLingua status (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+  /api/services/llmlingua/auto-start:
+    post:
+      x-loopback-only: true
+      summary: LLMLingua auto-start (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+        "204":
+          description: Setting updated
+  /api/services/llmlingua/auto-restart-adopted:
+    post:
+      x-loopback-only: true
+      summary: LLMLingua auto-restart-adopted (loopback only)
+      responses:
+        "200":
+          description: Service operation result
+        "400":
+          description: Invalid request
+        "500":
+          description: Service operation failed
+        "204":
+          description: Setting updated
   /api/v1/session-leases:
     post:
       tags:

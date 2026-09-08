@@ -408,3 +408,12 @@ npm run check:docs-sync
 ```
 
 CI also runs this check in `.github/workflows/ci.yml` (lint job).
+
+### Fork sidecar smoke checks
+
+- LLMLingua: install/start from the Services dashboard; verify status and logs, then stop/restart.
+  With the optional ML runtime available, configure `LLMLINGUA_BASE_URL` and verify a prose
+  prompt actually shrinks. An unavailable model must not report invented compression savings.
+- Bifrost: configure a provider/model, enable `BIFROST_INGRESS_ENABLED`, and test chat and
+  messages clients. An invalid OmniRoute API key must be rejected before sidecar dispatch.
+  Stop Bifrost and confirm native fallback; cancel a streaming request and confirm cleanup.

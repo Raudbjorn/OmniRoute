@@ -32,7 +32,7 @@ via API keys), embedded services run on the same machine as OmniRoute and commun
 
 ### Why embedded services?
 
-Five services are embedded:
+Six services are embedded:
 
 | Service         | npm package                        | Default port | Purpose                                                                                                                                                                                |
 | --------------- | ---------------------------------- | :----------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -41,8 +41,9 @@ Five services are embedded:
 | **Mux**         | `mux` (headless `mux server`)      |     8322     | Local agent-orchestration daemon (coder/mux). Lifecycle-managed only — not a routing target (no LLM proxying).                                                                         |
 | **Bifrost**     | `@maximhq/bifrost`                 |     8080     | Go AI-gateway relay backend. When running, auto-selected by the relay route (`/v1/relay/`)                                                                                             |
 | **Dario**       | `@askalf/dario`                    |     3456     | Claude-subscription proxy — alternative/failover to CLIProxyAPI for Claude-Code-shaped traffic; the injected key becomes `DARIO_ADMIN_TOKEN` gating its `/admin/*` OAuth control plane |
+| **LLMLingua**   | Existing ONNX worker               |    20135     | Supervised HTTP prompt compression; optional ML runtime required                                                                                                                       |
 
-All five follow the same supervisory model:
+All six follow the same supervisory model:
 
 - OmniRoute installs them under `DATA_DIR/services/{name}/` (isolated from OmniRoute's own `package.json`)
 - OmniRoute spawns and monitors them as child processes
@@ -887,3 +888,31 @@ the most recent lines within the `tail` limit. Logs are not persisted to disk un
 - `docs/architecture/ARCHITECTURE.md` — system-level context
 - `docs/openapi.yaml` — machine-readable endpoint definitions
 - `CLAUDE.md` §"Adding a New Embedded Service" — quick-reference checklist
+
+## Fork integration: LLMLingua and Bifrost ingress
+
+Adapted from upstream [#12967](https://github.com/diegosouzapw/OmniRoute/pull/12967)
+and [#12953](https://github.com/diegosouzapw/OmniRoute/pull/12953) by
+[@rqzbeh](https://github.com/rqzbeh).
+
+LLMLingua is available in the Services dashboard with install, start, stop, restart,
+update, status, auto-start and auto-restart-adopted controls. Its management endpoints
+are under `/api/services/llmlingua/` and use the existing loopback-only route guard.
+The installed service wrapper has version `1.0.0`; this is not the upstream model version.
+It reuses OmniRoute's LLMLingua ONNX worker and optional ML dependencies. Installation
+writes the service entrypoint; it does not download those optional dependencies.
+
+Set `LLMLINGUA_BASE_URL=http://127.0.0.1:20135` to use the HTTP service for the LLMLingua
+compression engine. `LLMLINGUA_PORT` changes the supervised port. With no base URL,
+compression uses the existing worker directly. HTTP errors, invalid results and unavailable
+models fall back to that worker. The service bounds request size, validates input and
+allows one inference at a time. Health reports process availability, not model readiness.
+
+Set `BIFROST_INGRESS_ENABLED=1` to enable Bifrost in the native executor path. Existing
+`BIFROST_BASE_URL`, `BIFROST_API_KEY` and relay-backend configuration still apply.
+Authentication, policy, guardrails, admission and response accounting remain in the normal
+chat pipeline. OpenAI and Claude wire formats use Bifrost's corresponding protocol adapters;
+other formats keep native execution. Explicit CLIProxyAPI/Dario overrides retain precedence.
+Configure the desired provider/model in Bifrost before enabling this option. Bifrost network
+errors and HTTP 5xx trigger the existing cooldown and fall back to the native executor.
+Client cancellation propagates without retrying. No sidecar is enabled or started by this port.

@@ -1,3 +1,4 @@
+import { wrapExecutorWithBifrost } from "@/shared/services/bifrost/bifrostExecutor";
 /**
  * chatCore upstream-proxy executor resolver (Quality Gate v2 / Fase 9 — chatCore god-file
  * decomposition, #3501).
@@ -137,7 +138,9 @@ export async function resolveExecutorWithProxy(
   }
 
   const cfg = await getUpstreamProxyConfigCached(prov);
-  if (!cfg.enabled || cfg.mode === "native") return getExecutor(prov);
+  if (!cfg.enabled || cfg.mode === "native") {
+    return wrapExecutorWithBifrost(await getExecutor(prov), prov);
+  }
 
   if (cfg.mode === "cliproxyapi") {
     log?.info?.("UPSTREAM_PROXY", `${prov} routed through CLIProxyAPI (passthrough)`);

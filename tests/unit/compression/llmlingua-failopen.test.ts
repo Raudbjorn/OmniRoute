@@ -310,3 +310,31 @@ describe("llmlingua engine — minTokens floor + config schema (Task 3/4)", () =
     assert.ok(byKey.has("modelPath"), "schema must include modelPath");
   });
 });
+
+it("HTTP sidecar is opt-in and malformed responses fall back without erasing prose", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalUrl = process.env.LLMLINGUA_BASE_URL;
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalUrl === undefined) delete process.env.LLMLINGUA_BASE_URL;
+    else process.env.LLMLINGUA_BASE_URL = originalUrl;
+    setLlmlinguaBackend(null);
+  });
+  setLlmlinguaBackend(null);
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return Response.json({ text: "short prose" });
+  };
+  const body = makeBody([{ role: "user", content: LARGE_PROSE }]);
+  delete process.env.LLMLINGUA_BASE_URL;
+  await llmlinguaEngine.applyAsync!(body, { stepConfig: { minTokens: 0 } });
+  assert.equal(calls, 0);
+  process.env.LLMLINGUA_BASE_URL = "http://127.0.0.1:20135/";
+  const result = await llmlinguaEngine.applyAsync!(body, { stepConfig: { minTokens: 0 } });
+  assert.equal(result.compressed, true);
+  assert.ok(calls > 0);
+  globalThis.fetch = async () => Response.json({ text: "" });
+  const unchanged = await llmlinguaEngine.applyAsync!(body, { stepConfig: { minTokens: 0 } });
+  assert.ok(JSON.stringify(unchanged.body).length > 20);
+});

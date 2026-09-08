@@ -110,3 +110,18 @@ test("STRIP_UPSTREAM_HEADER_NAMES: contains expected three lowercase names", () 
   assert.ok(STRIP_UPSTREAM_HEADER_NAMES.has("content-length"));
   assert.ok(STRIP_UPSTREAM_HEADER_NAMES.has("transfer-encoding"));
 });
+
+test("sidecar diagnostics are limited to known routing values", async () => {
+  const { getSidecarResponseHeaders } =
+    await import("../../open-sse/utils/upstreamResponseHeaders.ts");
+  assert.deepEqual(
+    getSidecarResponseHeaders(
+      new Headers({
+        "X-Routed-By": "bifrost",
+        "X-Routing-Fallback": "bifrost-error",
+        "X-Routing-Fallback-Reason": "untrusted secret",
+      })
+    ),
+    { "X-Routed-By": "bifrost", "X-Routing-Fallback": "bifrost-error" }
+  );
+});

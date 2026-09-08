@@ -1665,3 +1665,13 @@ Used by `open-sse/services/combo.ts` and `src/lib/quota/quotaScheduler.ts` for p
 | Variable                          | Default  | Source File                       | Description                                                                                                      |
 | --------------------------------- | -------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `OMNIROUTE_QUOTA_AWARE_ROUTING`   | `0`      | `open-sse/services/combo.ts`      | When `1`, skip connections whose per-window token budget (`rateLimitOverrides.tpm`, table `provider_quota_state`) cannot afford the estimated request cost before dispatch. Fail-open when no budget configured. |
+
+### Fork sidecar integration
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `BIFROST_INGRESS_ENABLED` | `0` | Set to `1` to dispatch eligible native chat executors through Bifrost after authentication and policy checks. |
+| `LLMLINGUA_PORT` | `20135` | Supervised LLMLingua HTTP service port. |
+| `LLMLINGUA_BASE_URL` | unset | Optional compression service URL; unset keeps the direct worker backend. |
+| `LLMLINGUA_WORKER_FILE` | internal | Absolute worker entrypoint supplied to the supervised child by the installer. |
+| `LLMLINGUA_WORKER_ARGV` | internal | JSON-encoded worker loader arguments supplied to the supervised child by the installer. |

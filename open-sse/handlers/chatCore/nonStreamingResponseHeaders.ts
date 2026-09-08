@@ -1,3 +1,4 @@
+import { getSidecarResponseHeaders } from "../../utils/upstreamResponseHeaders.ts";
 /**
  * chatCore non-streaming success response headers (Quality Gate v2 / Fase 9 — chatCore god-file
  * decomposition, #3501).
@@ -13,6 +14,7 @@ import { attachOmniRouteMetaHeaders as defaultAttachMeta } from "@/domain/omniro
 
 export function buildNonStreamingResponseHeaders(
   args: {
+    providerHeaders?: Headers;
     provider: string | null | undefined;
     model: string | null | undefined;
     startTime: number;
@@ -44,5 +46,5 @@ export function buildNonStreamingResponseHeaders(
   if (args.compressionResponseMeta) {
     responseHeaders[OMNIROUTE_RESPONSE_HEADERS.compression] = args.compressionResponseMeta;
   }
-  return responseHeaders;
+  return { ...responseHeaders, ...getSidecarResponseHeaders(args.providerHeaders) };
 }

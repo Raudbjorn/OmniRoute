@@ -78,3 +78,15 @@ export function stripSensitiveResponseHeaders(input: Headers): Headers {
 }
 
 export { SENSITIVE_RESPONSE_HEADER_NAMES };
+
+/** Propagate the sidecar transport/fallback diagnostics through response translation. */
+export function getSidecarResponseHeaders(headers?: Headers): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const name of ["X-Routed-By", "X-Routing-Fallback", "X-Routing-Fallback-Reason"]) {
+    const value = headers?.get(name);
+    if (value === "bifrost" || value === "bifrost-error" || value === "bifrost-cooldown") {
+      result[name] = value;
+    }
+  }
+  return result;
+}
