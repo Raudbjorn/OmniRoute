@@ -96,7 +96,7 @@
   <tr>
     <td align="right"><b>⚙️ Features</b></td>
     <td align="center"><a href="#-combos--the-flagship">🎯 Combos</a></td>
-    <td align="center"><a href="#-352-ai-providers--154-catalog-marked-free">🌐 Providers</a></td>
+    <td align="center"><a href="#-352-ai-providers--152-catalog-marked-free">🌐 Providers</a></td>
     <td align="center"><a href="#-full-cli--a2a--mcp">🔌 CLI &amp; MCP</a></td>
   </tr>
   <tr>

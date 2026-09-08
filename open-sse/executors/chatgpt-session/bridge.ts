@@ -77,8 +77,9 @@ export function resolveChatGptSessionStreamOpenTimeoutMs(
   const raw = env.OMNIROUTE_CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS;
   if (raw == null || raw.trim() === "") return CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0
-    ? Math.floor(parsed)
+  const timeoutMs = Math.floor(parsed);
+  return Number.isFinite(parsed) && timeoutMs > 0
+    ? timeoutMs
     : CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS;
 }
 
@@ -287,7 +288,11 @@ export async function openChatGptSessionStream(
 export function buildChatGptSessionCompletion(
   events: readonly AdapterEvent[],
   meta: ChatGptSessionResponseMeta
-): { status: number; body: Record<string, unknown> } {
+): {
+  status: number;
+  body: Record<string, unknown>;
+  fallbackHint?: "connection_cooldown";
+} {
   let content = "";
   let reasoning = "";
   let finishReason = "stop";
@@ -308,7 +313,11 @@ export function buildChatGptSessionCompletion(
     }
   }
 
-  if (failure && failure.type === "error" && !content) {
+  // The buffered path has not committed an HTTP status yet — unlike streaming, where the first
+  // committing byte already sent a 200. A trailing error must stay authoritative even when the
+  // turn produced partial text first, or the caller sees a fabricated success with the partial
+  // content silently discarded mid-answer.
+  if (failure && failure.type === "error") {
     const classified = classifyChatGptSessionError(failure);
     return {
       status: classified.status,
@@ -316,6 +325,7 @@ export function buildChatGptSessionCompletion(
         type: classified.status >= 500 ? "provider_error" : "invalid_request_error",
         code: classified.code,
       }) as unknown as Record<string, unknown>,
+      ...(classified.fallbackHint ? { fallbackHint: classified.fallbackHint } : {}),
     };
   }
 

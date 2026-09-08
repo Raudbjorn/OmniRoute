@@ -205,15 +205,21 @@ export class ChatGptSessionExecutor extends BaseExecutor {
         });
       }
 
+      // Phrased so `MODEL_ACCESS_DENIED_PATTERNS` (open-sse/services/accountFallback.ts)
+      // recognizes this as an account-scoped model access gap, not a dead end: a different
+      // connection on the same provider may have the Sol selector or Pro tier this route needs,
+      // so combo routing must rotate to it instead of stopping on this connection.
       if (route.sol !== solAvailable) {
         throw new Error(
           route.sol
-            ? `${route.id} is not available for this Luna-only connection`
-            : `${route.id} is not available while the account exposes the Sol model selector`
+            ? `This connection does not have access to model ${route.id}: it is not available for this Luna-only connection`
+            : `This connection does not have access to model ${route.id}: it is not available while the account exposes the Sol model selector`
         );
       }
       if (route.pro && !proAvailable) {
-        throw new Error(`${route.id} is not available for this non-Pro connection`);
+        throw new Error(
+          `This connection does not have access to model ${route.id}: it is not available for this non-Pro connection`
+        );
       }
 
       const messages = Array.isArray(requestBody.messages)
@@ -301,7 +307,9 @@ export class ChatGptSessionExecutor extends BaseExecutor {
         const built = buildChatGptSessionCompletion(collected, meta);
         const jsonResponse = new Response(JSON.stringify(built.body), {
           status: built.status,
-          headers: JSON_HEADERS,
+          headers: built.fallbackHint
+            ? { ...JSON_HEADERS, "X-Omni-Fallback-Hint": built.fallbackHint }
+            : JSON_HEADERS,
         });
         if (!hasTools || built.status !== 200) return wrapped(jsonResponse, input.body);
         const toolResponse = await buildToolModeResponse(

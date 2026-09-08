@@ -296,6 +296,39 @@ test("the buffered path returns the same status for reasoning followed by an err
   assert.equal(result.status, 429);
 });
 
+// The buffered path has not committed an HTTP status yet, unlike streaming — a trailing error
+// must stay authoritative even when the turn produced partial text first, or the caller sees a
+// fabricated success with the partial content silently discarded mid-answer.
+test("the buffered path stays an error even after partial content was produced", () => {
+  const result = buildChatGptSessionCompletion(
+    [
+      { type: "text_delta", text: "Partial answer" },
+      { type: "error", message: "ChatGPT reported a usage limit", status: 429 },
+    ],
+    META
+  );
+  assert.equal(result.status, 429);
+  assert.notEqual(result.body.object, "chat.completion");
+});
+
+test("buffered completion carries the classified fallbackHint for a 503", () => {
+  const result = buildChatGptSessionCompletion(
+    [{ type: "error", message: "browser turn failed", status: 503 }],
+    META
+  );
+  assert.equal(result.status, 503);
+  assert.equal(result.fallbackHint, "connection_cooldown");
+});
+
+test("buffered completion carries the classified fallbackHint for a 429", () => {
+  const result = buildChatGptSessionCompletion(
+    [{ type: "error", message: "ChatGPT reported a usage limit", status: 429 }],
+    META
+  );
+  assert.equal(result.status, 429);
+  assert.equal(result.fallbackHint, "connection_cooldown");
+});
+
 test("reasoning buffered behind the gate is still streamed once the gate opens", async () => {
   const opened = await openChatGptSessionStream(
     iterate([
@@ -475,6 +508,7 @@ const INVALID_STREAM_OPEN_TIMEOUT_INPUTS: Array<[label: string, raw: string]> = 
   ["zero", "0"],
   ["a negative number", "-10"],
   ["a non-finite value", "Infinity"],
+  ["a fractional value that floors to zero", "0.5"],
 ];
 
 for (const [label, raw] of INVALID_STREAM_OPEN_TIMEOUT_INPUTS) {

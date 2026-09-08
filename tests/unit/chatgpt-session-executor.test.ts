@@ -107,6 +107,43 @@ test("rejects a Pro route on a non-Pro account without touching the browser", as
   const response = "response" in result ? result.response : result;
   assert.equal(response.status, 400);
   assert.equal(ran, false);
+  const json = (await response.json()) as { error: { message: string } };
+  // Phrased so account-fallback (open-sse/services/accountFallback.ts) recognizes this as an
+  // account-scoped model access gap and rotates to another connection instead of stopping here.
+  assert.match(json.error.message, /access[\s\S]{0,60}model|model[\s\S]{0,60}access/i);
+});
+
+test("rejects a Sol route on a Luna-only account without touching the browser", async () => {
+  let ran = false;
+  stubRuntime([], {
+    runTurn: async () => {
+      ran = true;
+    },
+  });
+  const result = await new ChatGptSessionExecutor().execute({
+    model: "luna",
+    body: body(),
+    stream: true,
+    credentials: CREDENTIALS, // solAvailable: true, but "luna" requires sol: false
+  });
+  const response = "response" in result ? result.response : result;
+  assert.equal(response.status, 400);
+  assert.equal(ran, false);
+  const json = (await response.json()) as { error: { message: string } };
+  assert.match(json.error.message, /access[\s\S]{0,60}model|model[\s\S]{0,60}access/i);
+});
+
+test("buffered 503 responses also carry the cooldown fallback hint header", async () => {
+  stubRuntime([{ type: "error", message: "browser turn failed", status: 503 }]);
+  const result = await new ChatGptSessionExecutor().execute({
+    model: "high",
+    body: body(),
+    stream: false,
+    credentials: CREDENTIALS,
+  });
+  const response = "response" in result ? result.response : result;
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get("X-Omni-Fallback-Hint"), "connection_cooldown");
 });
 
 test("an expired session before output becomes a 401, not a 200 stream", async () => {
