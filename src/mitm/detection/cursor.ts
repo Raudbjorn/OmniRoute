@@ -9,18 +9,10 @@ import type { DetectionResult } from "../types";
 
 const HOME = os.homedir();
 const PATHS = [
-  "/Applications/Cursor.app",
-  path.join(HOME, "Applications", "Cursor.app"),
   "/usr/bin/cursor",
   "/usr/local/bin/cursor",
   path.join(HOME, ".local", "bin", "cursor"),
   path.join(HOME, ".cursor"),
-  path.join(
-    process.env.LOCALAPPDATA ?? path.join(HOME, "AppData", "Local"),
-    "Programs",
-    "cursor",
-    "Cursor.exe"
-  ),
 ];
 
 export function detectCursor(): DetectionResult {

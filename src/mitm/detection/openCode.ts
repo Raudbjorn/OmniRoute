@@ -9,19 +9,11 @@ import type { DetectionResult } from "../types";
 
 const HOME = os.homedir();
 const PATHS = [
-  "/Applications/OpenCode.app",
-  path.join(HOME, "Applications", "OpenCode.app"),
   "/usr/bin/opencode",
   "/usr/local/bin/opencode",
   path.join(HOME, ".local", "bin", "opencode"),
   path.join(HOME, ".opencode"),
   path.join(HOME, ".config", "opencode"),
-  path.join(
-    process.env.LOCALAPPDATA ?? path.join(HOME, "AppData", "Local"),
-    "Programs",
-    "OpenCode",
-    "OpenCode.exe"
-  ),
 ];
 
 export function detectOpenCode(): DetectionResult {

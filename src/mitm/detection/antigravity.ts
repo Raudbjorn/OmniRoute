@@ -9,20 +9,9 @@ import type { DetectionResult } from "../types.ts";
 
 const HOME = os.homedir();
 const PATHS = [
-  // macOS
-  "/Applications/Antigravity.app",
-  path.join(HOME, "Applications", "Antigravity.app"),
-  // Linux (AppImage / system install)
   "/usr/bin/antigravity",
   "/usr/local/bin/antigravity",
   path.join(HOME, ".local", "bin", "antigravity"),
-  // Windows
-  path.join(
-    process.env.LOCALAPPDATA ?? path.join(HOME, "AppData", "Local"),
-    "Programs",
-    "Antigravity",
-    "Antigravity.exe"
-  ),
 ];
 
 export function detectAntigravity(): DetectionResult {
