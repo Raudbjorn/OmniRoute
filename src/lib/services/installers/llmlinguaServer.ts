@@ -51,7 +51,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.method !== "POST" || req.url !== "/compress") { reply(res, 404, { error: "Not found" }); return; }
-  // ponytail: one inference at a time; add a bounded queue if measured throughput needs it.
+  // Only one request may own the worker's pending response callback at a time.
   if (busy) { reply(res, 429, { error: "Compressor busy" }); return; }
   busy = true;
   try {

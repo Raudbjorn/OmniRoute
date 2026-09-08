@@ -58,9 +58,15 @@ export function wrapExecutorWithBifrost(native: BaseExecutor, provider: string):
     }
     const result = await native.execute(input);
     const response = result instanceof Response ? result : result.response;
-    response.headers.set("X-Routing-Fallback", reason);
-    response.headers.set("X-Routing-Fallback-Reason", reason);
-    return result;
+    const headers = new Headers(response.headers);
+    headers.set("X-Routing-Fallback", reason);
+    headers.set("X-Routing-Fallback-Reason", reason);
+    const fallback = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    });
+    return result instanceof Response ? fallback : { ...result, response: fallback };
   };
   return wrapper;
 }

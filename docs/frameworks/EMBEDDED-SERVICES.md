@@ -891,6 +891,10 @@ the most recent lines within the `tail` limit. Logs are not persisted to disk un
 
 ## Fork integration: LLMLingua and Bifrost ingress
 
+Adapted from upstream [#12967](https://github.com/diegosouzapw/OmniRoute/pull/12967)
+and [#12953](https://github.com/diegosouzapw/OmniRoute/pull/12953) by
+[@rqzbeh](https://github.com/rqzbeh).
+
 LLMLingua is available in the Services dashboard with install, start, stop, restart,
 update, status, auto-start and auto-restart-adopted controls. Its management endpoints
 are under `/api/services/llmlingua/` and use the existing loopback-only route guard.
