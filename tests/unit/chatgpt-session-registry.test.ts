@@ -23,7 +23,9 @@ test("the registry exposes chatgpt-session with its seven routes", () => {
 test("the new ids are not the retired ones", () => {
   assert.equal(isCommonChatGptWebRetiredProviderId("chatgpt-session"), false);
   assert.equal(isCommonChatGptWebRetiredProviderId("cgpt-session"), false);
-  assert.deepEqual([...RETIRED_COMMON_CHATGPT_WEB_PROVIDER_IDS], ["chatgpt-web", "cgpt-web"]);
+  // chatgpt-web itself was restored by #12239 (clean-room browser transport); only its
+  // old alias stays retired.
+  assert.deepEqual([...RETIRED_COMMON_CHATGPT_WEB_PROVIDER_IDS], ["cgpt-web"]);
 });
 
 test("both executor aliases resolve to the session executor", async () => {

@@ -9,6 +9,7 @@
     "AGENTROUTER",
     "ZED-DOCKER",
     "CURSOR-DOCKER",
-    "CURSOR-API-KEY-AND-CLI"
+    "CURSOR-API-KEY-AND-CLI",
+    "CSV-IMPORT"
   ]
 }
