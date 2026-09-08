@@ -509,6 +509,8 @@ const INVALID_STREAM_OPEN_TIMEOUT_INPUTS: Array<[label: string, raw: string]> = 
   ["a negative number", "-10"],
   ["a non-finite value", "Infinity"],
   ["a fractional value that floors to zero", "0.5"],
+  ["a fractional value that would floor to a nonzero integer", "45.7"],
+  ["a value beyond setTimeout's int32 delay range", "99999999999"],
 ];
 
 for (const [label, raw] of INVALID_STREAM_OPEN_TIMEOUT_INPUTS) {

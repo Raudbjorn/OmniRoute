@@ -49,8 +49,13 @@ const MISSING_CREDENTIALS =
   /credentials are missing|Cookie or verified browser storage state is required|Cookie header is missing/i;
 const SESSION_EXPIRED = /not authenticated|storage state is invalid|sign ?in|log ?in|logged out/i;
 const RATE_LIMITED = /rate limit|usage limit|too many requests|message limit/i;
+// `^Unsupported ChatGPT Session model:` is `requireChatGptSessionRoute`'s own message
+// (open-sse/executors/chatgpt-session/models.ts) for an unrecognized/obsolete model slug — a
+// client input error, not a provider outage, so it must land as a terminal 400, not the 502
+// `turn_failed` default. Anchored to that exact known prefix rather than a bare `unsupported`
+// so an unrelated "unsupported X" message elsewhere is never misclassified.
 const ROUTE_UNAVAILABLE =
-  /not available for this|not available while the account|is not supported/i;
+  /not available for this|not available while the account|is not supported|^Unsupported ChatGPT Session model:/i;
 const UI_TIMEOUT = /waitForSelector|Timeout \d+ms exceeded|actionability|interception/i;
 
 export function classifyChatGptSessionError(error: unknown): ChatGptSessionErrorClass {
@@ -66,6 +71,16 @@ export function classifyChatGptSessionError(error: unknown): ChatGptSessionError
   // expired session to the message-pattern checks below).
   if (like.name === "TimeoutError") {
     return { status: 400, code: "browser_ui_timeout" };
+  }
+
+  // An aborted turn (client disconnect, cancelled combo leg) is not a provider failure and must
+  // never count toward the breaker or an account cooldown — mirrors the platform-wide 499
+  // client_disconnected classification (`ERROR_TYPES[499]` in open-sse/config/errorConfig.ts).
+  // Checked by name before status/message matching, same tier as the TimeoutError check above:
+  // an AbortError thrown directly by the runtime carries no `.status` and its message never
+  // matches the patterns below, so without this it falls through to a retryable 502.
+  if (like.name === "AbortError") {
+    return { status: 499, code: "client_disconnected" };
   }
 
   // An explicit numeric status is the adapter's own authoritative verdict. The vendor documents

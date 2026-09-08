@@ -67,6 +67,33 @@ test("a TimeoutError naming a login selector is a UI timeout, not an expired ses
   assert.equal(result.code, "browser_ui_timeout");
 });
 
+// An aborted turn (client disconnect, cancelled combo leg) must never count toward the breaker
+// or an account cooldown, matching the platform-wide 499 client_disconnected classification.
+test("an AbortError is a client disconnect, not a retryable provider failure", () => {
+  const aborted = new DOMException("The operation was aborted", "AbortError");
+  const result = classifyChatGptSessionError(aborted);
+  assert.equal(result.status, 499);
+  assert.equal(result.code, "client_disconnected");
+  assert.equal(result.fallbackHint, undefined);
+});
+
+test("an AbortError outranks a message that would otherwise classify as a session error", () => {
+  const aborted = new Error("ChatGPT page is not authenticated");
+  aborted.name = "AbortError";
+  const result = classifyChatGptSessionError(aborted);
+  assert.equal(result.status, 499);
+  assert.equal(result.code, "client_disconnected");
+});
+
+// requireChatGptSessionRoute's own message for an unrecognized/obsolete model slug — a client
+// input error, must land as a terminal 400, not the 502 turn_failed default.
+test("an unsupported model slug is a terminal 400, not a retryable 502", () => {
+  const result = classifyChatGptSessionError(new Error("Unsupported ChatGPT Session model: gpt-4"));
+  assert.equal(result.status, 400);
+  assert.equal(result.code, "route_unavailable");
+  assert.equal(result.fallbackHint, undefined);
+});
+
 test("input errors map to their own 400 codes", () => {
   const result = classifyChatGptSessionError(
     new ChatGptSessionInputError("vision_unsupported", "no images")

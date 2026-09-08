@@ -65,11 +65,19 @@ const COMMENTARY_PHASE: CodexMessagePhase = "commentary";
 export const CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS = 30_000;
 
 /**
+ * `setTimeout`'s delay is coerced to a signed 32-bit int; anything past this fires almost
+ * immediately instead of respecting the configured delay, which is worse than the default.
+ */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
+
+/**
  * Reads `OMNIROUTE_CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS` and falls back to
  * {@link CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS} whenever the variable is unset, empty,
- * unparseable, non-finite, or not positive — mirrors `resolveDirectHeadersTimeoutMs`
- * (`open-sse/utils/directResponseStartTimeout.ts`). Callers resolve this per request so a
- * changed environment variable takes effect without a restart.
+ * unparseable, non-integer, not positive, or beyond `setTimeout`'s int32 delay range — mirrors
+ * `resolveDirectHeadersTimeoutMs` (`open-sse/utils/directResponseStartTimeout.ts`). A fractional
+ * value (e.g. "0.5") is rejected rather than floored to zero, which would otherwise silently
+ * disable the deadline. Callers resolve this per request so a changed environment variable takes
+ * effect without a restart.
  */
 export function resolveChatGptSessionStreamOpenTimeoutMs(
   env: Record<string, string | undefined> = process.env
@@ -77,9 +85,8 @@ export function resolveChatGptSessionStreamOpenTimeoutMs(
   const raw = env.OMNIROUTE_CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS;
   if (raw == null || raw.trim() === "") return CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS;
   const parsed = Number(raw);
-  const timeoutMs = Math.floor(parsed);
-  return Number.isFinite(parsed) && timeoutMs > 0
-    ? timeoutMs
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= MAX_TIMER_DELAY_MS
+    ? parsed
     : CHATGPT_SESSION_STREAM_OPEN_TIMEOUT_MS;
 }
 

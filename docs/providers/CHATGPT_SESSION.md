@@ -8,16 +8,17 @@ lastUpdated: 2026-09-02
 
 `chatgpt-session` (alias `cgpt-session`) serves ordinary `/v1/chat/completions` requests from
 an authenticated ChatGPT browser session. It is a clean-room implementation and shares no code
-with the retired common `chatgpt-web` provider; the browser interaction reuses the MIT-noticed
-implementation under `open-sse/vendor/codex-chatgpt-web/`.
+with `chatgpt-web` (the restored clean-room browser transport; only its old `cgpt-web` alias
+remains retired) — the browser interaction reuses the MIT-licensed implementation under
+`open-sse/vendor/codex-chatgpt-web/`.
 
 ## Relationship to the other ChatGPT providers
 
-| Provider                | Endpoint               | Client                       |
-| ----------------------- | ---------------------- | ---------------------------- |
-| `chatgpt-session`       | `/v1/chat/completions` | any OpenAI-compatible client |
-| `chatgpt-web-codex`     | `/v1/responses`        | the native Codex CLI only    |
-| `chatgpt-web` (retired) | —                      | fails closed with HTTP 410   |
+| Provider            | Endpoint               | Client                       |
+| ------------------- | ---------------------- | ---------------------------- |
+| `chatgpt-session`   | `/v1/chat/completions` | any OpenAI-compatible client |
+| `chatgpt-web-codex` | `/v1/responses`        | the native Codex CLI only    |
+| `chatgpt-web`       | `/v1/chat/completions` | any OpenAI-compatible client |
 
 ## Prerequisites
 

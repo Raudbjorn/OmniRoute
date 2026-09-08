@@ -37,6 +37,7 @@ const providersDb = await import("../../src/lib/db/providers.ts");
 const storageState = await import("../../open-sse/executors/chatgpt-web-codex/storageState.ts");
 const browserLogin = await import("../../open-sse/vendor/codex-chatgpt-web/browser-login.ts");
 const providersRoute = await import("../../src/app/api/providers/route.ts");
+const bulkWebSessionRoute = await import("../../src/app/api/providers/bulk-web-session/route.ts");
 
 const RAW_COOKIE = "__Secure-next-auth.session-token=session-value-abc; _cfuvid=cf-value";
 
@@ -129,20 +130,59 @@ test("POST rejects a raw cookie header and never echoes a stack or a path", asyn
   assert.doesNotMatch(String(body.error), /Browserprüfung/);
 });
 
+test("bulk-web-session import rejects chatgpt-session and chatgpt-web-codex", async () => {
+  // Both providers read their encoded, browser-verified storage state from `credentials.apiKey`
+  // (decodeChatGptWebCodexSecrets). This route stores a raw cookie in providerSpecificData with
+  // apiKey left null, which neither executor can use — a bulk-imported connection would sit
+  // unverified and never run. Must be rejected up front, not silently created broken.
+  for (const provider of ["chatgpt-session", "chatgpt-web-codex"]) {
+    const response = await bulkWebSessionRoute.POST(
+      await makeManagementSessionRequest("http://localhost/api/providers/bulk-web-session", {
+        method: "POST",
+        body: {
+          provider,
+          entries: [{ name: `${provider} bulk import`, credential: RAW_COOKIE }],
+        },
+      })
+    );
+    const body = (await response.json()) as { error?: string };
+    assert.equal(response.status, 400, `expected 400 for ${provider}, got ${response.status}`);
+    assert.match(String(body.error), /browser-session verification/);
+  }
+});
+
 test("both dashboard modals derive the credential envelope from the shared predicate", () => {
   // The client/server drift that caused C2 is only detectable at the source level: the modals
-  // are React components with no unit-testable seam. Pin that neither of them gates the
-  // ENVELOPE on the codex-only id any more.
-  const modals = [
+  // are React components with no unit-testable seam. A bare "the predicate's name appears
+  // somewhere in the file" check would still pass a modal that calls the predicate for an
+  // unrelated purpose (e.g. a UI label) while gating the actual envelope on something else — so
+  // this pins the exact chain instead: find the identifier assigned from
+  // `usesChatGptBrowserSessionCredentials(provider)`, then require THAT SAME identifier to be
+  // the ternary condition immediately gating a `{ version: 1, cookie: ... }` envelope.
+  const modalPaths = [
     "src/app/(dashboard)/dashboard/providers/[id]/components/modals/AddApiKeyModal.tsx",
     "src/app/(dashboard)/dashboard/providers/[id]/components/modals/EditConnectionModal.tsx",
-  ];
-  for (const modal of modals) {
+  ] as const;
+  for (const modal of modalPaths) {
+    // ast-grep(detect-non-literal-fs-filename-typescript): `modal` is one of the two literal
+    // paths above, never external input — this loop variable isn't attacker-controlled.
     const source = fs.readFileSync(modal, "utf8");
+    const predicateAssignment = source.match(
+      /const\s+(\w+)\s*=\s*usesChatGptBrowserSessionCredentials\(provider\)/
+    );
+    assert.ok(
+      predicateAssignment,
+      `${modal} must assign a variable from usesChatGptBrowserSessionCredentials(provider)`
+    );
+    const gateVar = predicateAssignment[1];
+    const envelopeGate = new RegExp(
+      `${gateVar}\\s*\\?\\s*JSON\\.stringify\\(\\{[\\s\\S]{0,120}?version:\\s*1[\\s\\S]{0,120}?cookie:`
+    );
     assert.match(
       source,
-      /usesChatGptBrowserSessionCredentials\(provider\)/,
-      `${modal} must derive the envelope from the shared browser-session predicate`
+      envelopeGate,
+      `${modal} must gate the { version: 1, cookie } envelope on ${gateVar}, ` +
+        `not on any other condition`
     );
     assert.doesNotMatch(
       source,

@@ -176,6 +176,7 @@ const SAFE_PUBLIC_ERROR_IDENTIFIERS = new Set([
   "native_codex_pinned_model_unavailable",
   "network_error",
   "no_free_eligible_connection",
+  "no_user_message",
   "not_found",
   "oauth_missing_project_id",
   "orphan_tool_result",
@@ -261,6 +262,7 @@ const SAFE_PUBLIC_ERROR_IDENTIFIERS = new Set([
   "unsupported_image_block",
   "unsupported_role",
   "unsupported_system_block",
+  "unsupported_content_part",
   "upstream_error",
   "upstream_access_denied",
   "upstream_auth_error",
@@ -284,6 +286,7 @@ const SAFE_PUBLIC_ERROR_IDENTIFIERS = new Set([
   "video_artifact_url_blocked",
   "video_artifact_url_invalid",
   "vision",
+  "vision_unsupported",
   "claude_web_protocol_error",
   "wreq_unavailable",
 ]);

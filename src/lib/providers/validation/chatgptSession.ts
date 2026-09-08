@@ -6,13 +6,21 @@ import { CHATGPT_WEB_CODEX_CONNECTOR_NAME } from "@/shared/constants/chatgptWebC
 import { inspectBrowserLoginCapabilities } from "@omniroute/open-sse/vendor/codex-chatgpt-web/browser-login.ts";
 import { getConfigDir } from "@omniroute/open-sse/vendor/codex-chatgpt-web/config.ts";
 import { decodeChatGptWebCodexSecrets } from "@omniroute/open-sse/executors/chatgpt-web-codex/credentials.ts";
-import { detectChromeExecutable } from "@omniroute/open-sse/executors/chatgpt-web-codex.ts";
 import {
   connectionRuntimePaths,
   ensureConnectionStorageState,
   ensureConnectionStorageStateFromCredential,
 } from "@omniroute/open-sse/executors/chatgpt-web-codex/storageState.ts";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error.ts";
+
+// detectChromeExecutable (executors/chatgpt-web-codex.ts) is imported dynamically below, not
+// statically here: this module is re-exported through the shared `@/lib/providers/validation`
+// barrel that every provider validator's callers pull in, and executors/chatgpt-web-codex.ts's
+// own import chain (its vendor browser adapter -> token-estimate.ts -> tiktoken's WASM
+// tokenizer) fails to bundle under Turbopack dev mode even with `tiktoken` server-externalized
+// -- turning validation of an unrelated provider into a route-wide crash for anyone who merely
+// imports the barrel. A static import here evaluates that whole chain unconditionally. Mirrors
+// validation/chatgptWebCodex.ts.
 
 // A successful fresh-cookie validation leaves authenticated cookie-derived browser state on
 // disk, keyed by `validationId`, so a later `finalizeValidatedChatGptWebCodexSecrets` call can
@@ -79,6 +87,8 @@ export async function validateChatGptSessionProvider({
     }
 
     const cdpEndpoint = process.env.CHATGPT_WEB_CODEX_CDP_URL?.trim();
+    const { detectChromeExecutable } =
+      await import("@omniroute/open-sse/executors/chatgpt-web-codex.ts");
     const chromeExecutablePath = detectChromeExecutable(
       typeof providerSpecificData.chromeExecutablePath === "string"
         ? providerSpecificData.chromeExecutablePath
