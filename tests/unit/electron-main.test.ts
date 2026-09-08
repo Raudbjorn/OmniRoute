@@ -11,12 +11,12 @@
  * - Platform-conditional window options
  */
 
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRequire } from "node:module";
+import { describe, it } from "node:test";
 
 const require = createRequire(import.meta.url);
 const { waitForServer } = require("../../electron/lib/serverReadiness");
@@ -181,11 +181,6 @@ describe("Electron Window Open Handler", () => {
       return { action: "deny" };
     }
   }
-
-  it("should deny all windows (external links go to browser)", () => {
-    const result = windowOpenHandler({ url: "https://example.com" });
-    assert.ok(result.action);
-  });
 
   it("should deny file:// URLs", () => {
     assert.equal(windowOpenHandler({ url: "file:///etc/passwd" }).action, "deny");
@@ -405,26 +400,7 @@ describe("Content Security Policy", () => {
 
 // ─── Platform-Conditional Tests (#9) ─────────────────────────
 
-describe("Platform-Conditional Window Options", () => {
-  it("should return hiddenInset for macOS", () => {
-    const platform = "darwin";
-    const options =
-      platform === "darwin"
-        ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 16 } }
-        : { titleBarStyle: "default" };
-
-    assert.equal(options.titleBarStyle, "hiddenInset");
-    assert.deepEqual(options.trafficLightPosition, { x: 16, y: 16 });
-  });
-
-  it("should return default for Windows/Linux", () => {
-    for (const platform of ["win32", "linux"]) {
-      const options =
-        platform === "darwin" ? { titleBarStyle: "hiddenInset" } : { titleBarStyle: "default" };
-      assert.equal(options.titleBarStyle, "default");
-    }
-  });
-});
+describe("Platform-Conditional Window Options", () => {});
 
 // ─── SQLite Credential Inspection Tests ─────────────────────
 

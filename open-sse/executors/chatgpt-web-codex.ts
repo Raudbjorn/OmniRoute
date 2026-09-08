@@ -106,7 +106,6 @@ export function detectChromeExecutable(explicit?: string): string | undefined {
     "/usr/bin/google-chrome-stable",
     "/usr/bin/chromium",
     "/usr/bin/chromium-browser",
-    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
   ];
   return candidates.find((candidate): candidate is string =>
     Boolean(candidate && existsSync(candidate))

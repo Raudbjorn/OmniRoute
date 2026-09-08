@@ -106,9 +106,8 @@ export default function AntigravityToolCard({
   // agent. The server reports `isWin` and `needsSudoPassword` in GET status —
   // a Windows browser hitting a Linux server still needs sudo, and a Linux
   // browser hitting a Windows server does not (#822).
-  const serverIsWindows = status?.isWin === true;
   const canRunWithoutPassword =
-    serverIsWindows || status?.hasCachedPassword === true || status?.needsSudoPassword === false;
+    status?.hasCachedPassword === true || status?.needsSudoPassword === false;
 
   const handleStart = () => {
     if (canRunWithoutPassword) {

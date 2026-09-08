@@ -1,9 +1,9 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { createRequire, syncBuiltinESMExports } from "node:module";
+import test from "node:test";
 import { pathToFileURL } from "node:url";
 
 const require = createRequire(import.meta.url);
@@ -37,7 +37,7 @@ function writeScript(dir, name, content, executable = true) {
   const filePath = path.join(dir, name);
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content);
-  if (process.platform !== "win32") {
+  {
     fs.chmodSync(filePath, executable ? 0o755 : 0o644);
   }
   return filePath;
@@ -109,13 +109,11 @@ test("getCliRuntimeStatus rejects unsafe env overrides and reports validated run
 
 test("getCliRuntimeStatus reports not_executable for absolute env override files without execute permission", async () => {
   const tempDir = createTempDir("omniroute-cli-notexec-");
-  const scriptName = process.platform === "win32" ? "codex.cmd" : "codex";
+  const scriptName = "codex";
   const scriptPath = writeScript(
     tempDir,
     scriptName,
-    process.platform === "win32"
-      ? "@echo off\r\necho codex 1.0.0\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\necho codex 1.0.0\n# padding padding padding\n",
+    "#!/bin/sh\necho codex 1.0.0\n# padding padding padding\n",
     false
   );
 
@@ -124,10 +122,7 @@ test("getCliRuntimeStatus reports not_executable for absolute env override files
   const status = await cliRuntime.getCliRuntimeStatus("codex");
 
   assert.equal(status.installed, true);
-  if (process.platform === "win32") {
-    assert.equal(status.runnable, true);
-    assert.equal(status.reason, null);
-  } else {
+  {
     assert.equal(status.runnable, false);
     assert.equal(status.reason, "not_executable");
   }
@@ -136,13 +131,11 @@ test("getCliRuntimeStatus reports not_executable for absolute env override files
 
 test("getCliRuntimeStatus reports healthcheck_failed when a binary exists but does not answer version probes", async () => {
   const tempDir = createTempDir("omniroute-cli-healthcheck-");
-  const scriptName = process.platform === "win32" ? "qodercli.cmd" : "qodercli";
+  const scriptName = "qodercli";
   const scriptPath = writeScript(
     tempDir,
     scriptName,
-    process.platform === "win32"
-      ? "@echo off\r\nexit /b 1\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\nexit 1\n# padding padding padding\n"
+    "#!/bin/sh\nexit 1\n# padding padding padding\n"
   );
 
   process.env.CLI_QODER_BIN = scriptPath;
@@ -156,108 +149,13 @@ test("getCliRuntimeStatus reports healthcheck_failed when a binary exists but do
   assert.equal(status.runtimeMode, "auto");
 });
 
-test("getCliRuntimeStatus healthchecks Windows .exe paths with spaces without shell", async () => {
-  if (process.platform !== "win32") return;
-
-  const tempDir = path.join(createTempDir("omniroute-cli-space-"), "dir with space");
-  const scriptPath = writeScript(
-    tempDir,
-    "claude.exe",
-    "fake executable content padding padding padding"
-  );
-  const spawnCalls = [];
-
-  process.env.CLI_CLAUDE_BIN = scriptPath;
-  childProcess.spawn = (command, args, options) => {
-    spawnCalls.push({ command, args, options });
-    const child = new (require("node:events").EventEmitter)();
-    child.stdout = new (require("node:events").EventEmitter)();
-    child.stderr = new (require("node:events").EventEmitter)();
-    child.kill = () => true;
-    setImmediate(() => {
-      child.stdout.emit("data", "2.1.157 (Claude Code)\n");
-      child.emit("close", 0);
-    });
-    return child;
-  };
-  syncBuiltinESMExports();
-
-  const cliRuntime = await importFresh("windows-exe-space-no-shell");
-  const status = await cliRuntime.getCliRuntimeStatus("claude");
-
-  assert.equal(status.installed, true);
-  assert.equal(status.runnable, true);
-  assert.equal(status.reason, null);
-  assert.equal(status.commandPath, scriptPath);
-  assert.equal(spawnCalls[0].command, scriptPath);
-  assert.deepEqual(spawnCalls[0].args, ["--version"]);
-  assert.equal(spawnCalls[0].options.shell, undefined);
-});
-
-test("getCliRuntimeStatus still healthchecks Windows .cmd wrappers through shell", async () => {
-  if (process.platform !== "win32") return;
-
-  const tempDir = createTempDir("omniroute-cli-cmd-shell-");
-  const scriptPath = writeScript(
-    tempDir,
-    "codex.cmd",
-    "@echo off\r\necho codex 1.2.3\r\nREM padding padding padding\r\n"
-  );
-  const spawnCalls = [];
-
-  process.env.CLI_CODEX_BIN = scriptPath;
-  childProcess.spawn = (command, args, options) => {
-    spawnCalls.push({ command, args, options });
-    const child = new (require("node:events").EventEmitter)();
-    child.stdout = new (require("node:events").EventEmitter)();
-    child.stderr = new (require("node:events").EventEmitter)();
-    child.kill = () => true;
-    setImmediate(() => {
-      child.stdout.emit("data", "codex 1.2.3\n");
-      child.emit("close", 0);
-    });
-    return child;
-  };
-  syncBuiltinESMExports();
-
-  const cliRuntime = await importFresh("windows-cmd-shell");
-  const status = await cliRuntime.getCliRuntimeStatus("codex");
-
-  assert.equal(status.installed, true);
-  assert.equal(status.runnable, true);
-  assert.equal(status.reason, null);
-  // The command is passed to spawn unquoted — Node quotes it for cmd.exe when
-  // shell:true. We must NOT manually interpolate quotes (hard rule #13).
-  assert.equal(spawnCalls[0].command, scriptPath);
-  assert.deepEqual(spawnCalls[0].args, ["--version"]);
-  assert.equal(spawnCalls[0].options.shell, true);
-});
-
-test("shouldUseShellForCommand never uses the shell on non-Windows platforms", async () => {
-  if (process.platform === "win32") return;
-  const cliRuntime = await importFresh("should-use-shell-posix");
-  for (const cmd of ["/usr/bin/claude", "/opt/My App/claude.exe", "tool.cmd", "x.bat"]) {
-    assert.equal(
-      cliRuntime.shouldUseShellForCommand(cmd),
-      false,
-      `expected no shell on POSIX for: ${cmd}`
-    );
-  }
-});
-
 test("getCliRuntimeStatus discovers binaries from CLI_EXTRA_PATHS during PATH lookup", async () => {
   const tempDir = createTempDir("omniroute-cli-extra-path-");
-  const scriptName = process.platform === "win32" ? "qodercli.cmd" : "qodercli";
-  writeScript(
-    tempDir,
-    scriptName,
-    process.platform === "win32"
-      ? "@echo off\r\necho qodercli 1.2.3\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\necho qodercli 1.2.3\n# padding padding padding\n"
-  );
+  const scriptName = "qodercli";
+  writeScript(tempDir, scriptName, "#!/bin/sh\necho qodercli 1.2.3\n# padding padding padding\n");
 
   process.env.CLI_EXTRA_PATHS = tempDir;
-  process.env.PATH = process.platform === "win32" ? process.env.PATH || "" : "/bin:/usr/bin";
+  process.env.PATH = "/bin:/usr/bin";
 
   const cliRuntime = await importFresh("extra-paths");
   const status = await cliRuntime.getCliRuntimeStatus("qoder");
@@ -265,25 +163,20 @@ test("getCliRuntimeStatus discovers binaries from CLI_EXTRA_PATHS during PATH lo
   assert.equal(status.installed, true);
   assert.equal(status.runnable, true);
   assert.equal(status.reason, null);
-  assert.equal(
-    path.basename(String(status.commandPath)).toLowerCase(),
-    process.platform === "win32" ? "qodercli.cmd" : "qodercli"
-  );
+  assert.equal(path.basename(String(status.commandPath)).toLowerCase(), "qodercli");
 });
 
 test("getCliRuntimeStatus resolves known binaries from npm global prefix discovered via npm config", async () => {
   const prefixDir = createTempDir("omniroute-cli-prefix-");
-  const scriptName = process.platform === "win32" ? "qodercli.cmd" : "qodercli";
+  const scriptName = "qodercli";
   const scriptPath = writeScript(
-    path.join(prefixDir, process.platform === "win32" ? "" : "bin"),
+    path.join(prefixDir, "bin"),
     scriptName,
-    process.platform === "win32"
-      ? "@echo off\r\necho qodercli 1.2.3\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\necho qodercli 1.2.3\n# padding padding padding\n"
+    "#!/bin/sh\necho qodercli 1.2.3\n# padding padding padding\n"
   );
 
   delete process.env.npm_config_prefix;
-  process.env.PATH = process.platform === "win32" ? process.env.PATH || "" : "/bin:/usr/bin";
+  process.env.PATH = "/bin:/usr/bin";
   childProcess.execFileSync = (command, args) => {
     assert.equal(command, "npm");
     assert.deepEqual(args, ["config", "get", "prefix"]);
@@ -302,13 +195,13 @@ test("getCliRuntimeStatus resolves known binaries from npm global prefix discove
 
 test("getCliRuntimeStatus ignores suspicious known-path binaries and symlink escapes", async () => {
   const prefixDir = createTempDir("omniroute-cli-suspicious-");
-  const binDir = path.join(prefixDir, process.platform === "win32" ? "" : "bin");
-  const scriptName = process.platform === "win32" ? "qodercli.exe" : "qodercli";
+  const binDir = path.join(prefixDir, "bin");
+  const scriptName = "qodercli";
   fs.mkdirSync(binDir, { recursive: true });
   fs.writeFileSync(path.join(binDir, scriptName), "");
 
   process.env.npm_config_prefix = prefixDir;
-  process.env.PATH = process.platform === "win32" ? process.env.PATH || "" : "/bin:/usr/bin";
+  process.env.PATH = "/bin:/usr/bin";
 
   const cliRuntime = await importFresh("suspicious-size");
   const suspiciousStatus = await cliRuntime.getCliRuntimeStatus("qoder");
@@ -316,7 +209,7 @@ test("getCliRuntimeStatus ignores suspicious known-path binaries and symlink esc
   assert.equal(suspiciousStatus.installed, false);
   assert.equal(suspiciousStatus.reason, "suspicious_size");
 
-  if (process.platform !== "win32") {
+  {
     const escapePrefix = createTempDir("omniroute-cli-escape-");
     const escapeBinDir = path.join(escapePrefix, "bin");
     const outsideDir = createTempDir("omniroute-cli-outside-");
@@ -350,13 +243,11 @@ test("getCliRuntimeStatus ignores suspicious known-path binaries and symlink esc
 
 test("getCliRuntimeStatus tolerates spawn errors during healthcheck and marks the tool as not runnable", async () => {
   const tempDir = createTempDir("omniroute-cli-spawn-error-");
-  const scriptName = process.platform === "win32" ? "cline.cmd" : "cline";
+  const scriptName = "cline";
   const scriptPath = writeScript(
     tempDir,
     scriptName,
-    process.platform === "win32"
-      ? "@echo off\r\necho cline\r\nREM padding padding padding\r\n"
-      : "#!/bin/sh\necho cline\n# padding padding padding\n"
+    "#!/bin/sh\necho cline\n# padding padding padding\n"
   );
 
   process.env.CLI_CLINE_BIN = scriptPath;

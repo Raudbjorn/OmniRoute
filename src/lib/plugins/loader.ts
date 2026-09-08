@@ -9,14 +9,14 @@
  */
 
 import { spawn } from "child_process";
-import { writeFile, readFile } from "fs/promises";
+import { createHash, randomUUID } from "crypto";
 import { rmSync } from "fs";
-import { join } from "path";
+import { readFile, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { randomUUID, createHash } from "crypto";
+import { join } from "path";
 import { logger } from "../../../open-sse/utils/logger.ts";
-import type { PluginManifestWithDefaults, Permission } from "./manifest";
 import type { Plugin, PluginContext, PluginResult } from "./index";
+import type { Permission, PluginManifestWithDefaults } from "./manifest";
 
 const log = logger("PLUGIN_LOADER");
 
@@ -214,7 +214,6 @@ export async function loadPlugin(
   };
 
   const child = spawn(process.execPath, ["--no-warnings", hostScriptPath, entryPoint], {
-    windowsHide: true,
     env,
     // #8395: stdout/stderr must be piped (not "ignore") so the plugin's own
     // console.log/console.error output — the SDK's documented logging pattern
@@ -417,12 +416,7 @@ export async function loadPlugin(
  * Uses allowlist approach — only pass explicitly safe vars.
  */
 function getFilteredEnv(permissions: Permission[]): Record<string, string> {
-  // SystemRoot/windir are not optional on Windows: node aborts during
-  // InitializeOncePerProcessInternal ("Assertion failed: ncrypto::CSPRNG") before
-  // running any script, because its CSPRNG lives under %SystemRoot%. Without these
-  // the child dies instantly, every hook times out, and — hooks being fail-open —
-  // plugins silently stop applying. They carry no secrets.
-  const platformKeys = process.platform === "win32" ? ["SystemRoot", "windir"] : [];
+  const platformKeys = [];
   const safeKeys = ["PATH", "HOME", "USER", "LANG", "LC_ALL", "NODE_ENV", ...platformKeys];
   const extendedSafeKeys = [...safeKeys, "PORT", "HOSTNAME", "TZ", "TMPDIR"];
   const allowedKeys = permissions.includes("env") ? extendedSafeKeys : safeKeys;

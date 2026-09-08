@@ -651,7 +651,6 @@ Common commands:
 | `npm run test:vitest`                                    | Vitest suite (MCP, autoCombo, cache)                             |
 | `npm run test:e2e`                                       | Playwright UI suite                                              |
 | `npm run test:protocols:e2e`                             | MCP + A2A protocol e2e                                           |
-| `npm run test:coverage`                                  | Coverage gate (≥60% lines/statements/functions/branches)         |
 | `node --import tsx/esm --test tests/unit/<file>.test.ts` | Single file run                                                  |
 
 ---
@@ -675,11 +674,11 @@ Organized into 6 subfolders by purpose.
   `check-docs-counts-sync.mjs`, `check-env-doc-sync.mjs`,
   `check-deprecated-versions.mjs`, `check-route-validation.mjs`,
   `check-t11-any-budget.mjs`, `check-pr-test-policy.mjs`,
-  `check-supported-node-runtime.ts`, `test-report-summary.mjs`.
+  `check-supported-node-runtime.ts`.
 - **`scripts/docs/`** — `generate-docs-index.mjs`, `gen-provider-reference.ts`.
 - **`scripts/i18n/`** — `generate-multilang.mjs`, `run-visual-qa.mjs`,
   `generate-qa-checklist.mjs`, `apply-priority-overrides.mjs`,
-  `validate_translation.py`, `check_translations.py`, `i18n_autotranslate.py`,
+  `validate_translation.py`, `check_translations.py`,
   `untranslatable-keys.json`.
 - **`scripts/ad-hoc/`** — `cursor-tap.cjs`, `sync-cursor-models.mjs`,
   `migrate-env.mjs`, `dbsetup.js`.

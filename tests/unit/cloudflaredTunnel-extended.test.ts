@@ -1,12 +1,11 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import fs from "node:fs/promises";
-import fsSync from "node:fs";
+import { createRequire, syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
-import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { createRequire, syncBuiltinESMExports } from "node:module";
+import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
@@ -108,12 +107,7 @@ test.afterEach(async () => {
 
 test("getCloudflaredRuntimeDirs and status resolve a managed binary from the data dir", async () => {
   const dataDir = await createCloudflaredDataDir("omniroute-cloudflared-managed-");
-  const binaryPath = path.join(
-    dataDir,
-    "cloudflared",
-    "bin",
-    process.platform === "win32" ? "cloudflared.exe" : "cloudflared"
-  );
+  const binaryPath = path.join(dataDir, "cloudflared", "bin", "cloudflared");
   process.env.DATA_DIR = dataDir;
 
   await fs.mkdir(path.dirname(binaryPath), { recursive: true });
@@ -140,9 +134,8 @@ test("getCloudflaredTunnelStatus resolves a PATH-installed binary when no manage
   const dataDir = await createCloudflaredDataDir("omniroute-cloudflared-path-");
   process.env.DATA_DIR = dataDir;
   delete process.env.CLOUDFLARED_BIN;
-  const lookupCommand = process.platform === "win32" ? "where" : "which";
-  const pathBinary =
-    process.platform === "win32" ? "C:\\Tools\\cloudflared.exe" : "/usr/local/bin/cloudflared";
+  const lookupCommand = "which";
+  const pathBinary = "/usr/local/bin/cloudflared";
 
   childProcess.execFile = (command, args, options, callback) => {
     const cb = typeof options === "function" ? options : callback;
@@ -215,12 +208,7 @@ test("getCloudflaredTunnelStatus reports a starting tunnel while the spawned pid
 
 test("startCloudflaredTunnel reaches running state and stopCloudflaredTunnel clears persisted runtime state", async () => {
   const dataDir = await createCloudflaredDataDir("omniroute-cloudflared-run-");
-  const binaryPath = path.join(
-    dataDir,
-    "cloudflared",
-    "bin",
-    process.platform === "win32" ? "cloudflared.exe" : "cloudflared"
-  );
+  const binaryPath = path.join(dataDir, "cloudflared", "bin", "cloudflared");
   process.env.DATA_DIR = dataDir;
   process.env.API_PORT = "24128";
 
@@ -363,12 +351,7 @@ test("startCloudflaredTunnel records an error state when the child exits before 
 
 test("startCloudflaredTunnel runs a named tunnel from a config file and reports its ingress hostname", async () => {
   const dataDir = await createCloudflaredDataDir("omniroute-cloudflared-named-");
-  const binaryPath = path.join(
-    dataDir,
-    "cloudflared",
-    "bin",
-    process.platform === "win32" ? "cloudflared.exe" : "cloudflared"
-  );
+  const binaryPath = path.join(dataDir, "cloudflared", "bin", "cloudflared");
   // Locally-managed named tunnel: config.yml declares the tunnel UUID,
   // credentials-file, and ingress routing. No CLOUDFLARED_HOSTNAME is set, so the
   // public hostname must be read from the config's first ingress rule.

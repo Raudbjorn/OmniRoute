@@ -1,12 +1,12 @@
 /**
  * #7938 — privileged MITM steps (cert trust, DNS) must be skippable when no sudo password.
  */
-import test from "node:test";
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { EventEmitter } from "node:events";
+import test from "node:test";
 import { canRunPrivilegedMitmSteps, isMitmSudoPasswordRequired } from "../../src/mitm/sudoGate.ts";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-mitm-sudo-gate-"));
@@ -25,7 +25,6 @@ test("canRunPrivilegedMitmSteps is false when isMitmSudoPasswordRequired is true
 });
 
 test("canRunPrivilegedMitmSteps is false for empty password on POSIX sudo-required hosts", () => {
-  if (process.platform === "win32") return;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   if (isRootUser) return;
   if (!isMitmSudoPasswordRequired("")) return;
@@ -33,7 +32,6 @@ test("canRunPrivilegedMitmSteps is false for empty password on POSIX sudo-requir
 });
 
 test("stopMitm skips DNS teardown without sudo password but still kills server (#7938)", async () => {
-  if (process.platform === "win32") return;
   const isRootUser = !!(process.getuid && process.getuid() === 0);
   if (isRootUser) return;
   if (!isMitmSudoPasswordRequired("")) return;

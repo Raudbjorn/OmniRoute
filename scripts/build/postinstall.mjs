@@ -30,10 +30,10 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PUBLISHED_BUILD_ARCH, PUBLISHED_BUILD_PLATFORM } from "./native-binary-compat.mjs";
-import { hasStandaloneAppBundle, isTermux } from "./postinstallSupport.mjs";
 import { colocateLlmlinguaOptionals } from "./colocateOptionals.mjs";
 import { fixPlaywrightAndroid } from "./fixPlaywrightAndroid.mjs";
+import { PUBLISHED_BUILD_ARCH, PUBLISHED_BUILD_PLATFORM } from "./native-binary-compat.mjs";
+import { hasStandaloneAppBundle, isTermux } from "./postinstallSupport.mjs";
 import { resolveWreqJsNativeBinding, WREQ_JS_VERSION } from "./wreqJsNative.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -56,7 +56,7 @@ function patchNodeGypCommonGypi() {
   try {
     const nodeVersion = process.version; // e.g. "v26.4.0"
     const gypDir = join(
-      process.env.HOME || process.env.USERPROFILE || "/root",
+      process.env.HOME || "/root",
       ".cache",
       "node-gyp",
       nodeVersion.replace(/^v/, "")
@@ -148,13 +148,7 @@ async function fixBetterSqliteBinary() {
   console.log("  📥  Attempting to download prebuilt binary via node-pre-gyp...");
   try {
     const { execSync } = await import("node:child_process");
-    const preGypBin = join(
-      ROOT,
-      "dist",
-      "node_modules",
-      ".bin",
-      process.platform === "win32" ? "node-pre-gyp.cmd" : "node-pre-gyp"
-    );
+    const preGypBin = join(ROOT, "dist", "node_modules", ".bin", "node-pre-gyp");
     const preGypFallback = join(
       ROOT,
       "dist",
@@ -236,18 +230,7 @@ async function fixBetterSqliteBinary() {
   console.warn("\n  ⚠️  Could not fix better-sqlite3 native module automatically.");
   console.warn("     The server may not start correctly.");
   console.warn("     Manual fix options:");
-  if (process.platform === "win32") {
-    console.warn("     Option A (easiest — no build tools needed):");
-    console.warn(`       cd "${join(ROOT, "dist", "node_modules", "better-sqlite3")}"`);
-    console.warn("       npx @mapbox/node-pre-gyp install --fallback-to-build=false");
-    console.warn("     Option B (requires Build Tools for Visual Studio):");
-    console.warn(`       cd "${join(ROOT, "dist")}" && npm rebuild better-sqlite3`);
-    console.warn("       Install from: https://visualstudio.microsoft.com/visual-cpp-build-tools/");
-    console.warn("       Also ensure Python is installed: https://python.org");
-  } else if (process.platform === "darwin") {
-    console.warn(`     cd ${join(ROOT, "dist")} && npm rebuild better-sqlite3`);
-    console.warn("     If build tools are missing: xcode-select --install");
-  } else {
+  {
     console.warn(`     cd ${join(ROOT, "dist")} && npm rebuild better-sqlite3`);
   }
   console.warn("");

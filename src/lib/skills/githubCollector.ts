@@ -282,12 +282,7 @@ export function resolveInstallPath(
   let template = INSTALL_PATHS[target];
   if (!template) throw new Error(`Unknown install target: ${target}`);
   template = template.replace("{category}", category);
-  const home =
-    typeof process !== "undefined" && process.env?.HOME
-      ? process.env.HOME
-      : typeof process !== "undefined" && process.env?.USERPROFILE
-        ? process.env.USERPROFILE
-        : "";
+  const home = typeof process !== "undefined" && process.env?.HOME ? process.env.HOME : "";
   return template.replace("~", home).replace("{name}", skillName);
 }
 

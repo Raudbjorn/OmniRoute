@@ -159,9 +159,7 @@ full URL and paste it below" — a flow that cannot complete for that provider. 
 unnoticed until #8463 because:
 
 - `sync-ui-keys` only backfills keys that are **absent**, never ones that are **stale**;
-- `check-ui-keys-coverage` counts key _presence_, so a stale translation scores as covered;
-- `check-translation-drift` tracks the `docs/i18n/<locale>/**.md` documentation mirrors —
-  it never reads `src/i18n/messages/*.json`.
+- `check-ui-keys-coverage` counts key _presence_, so a stale translation scores as covered.
 
 **Diff-aware, not baseline-backed.** It compares `en.json` at the merge base against the
 working tree; for every key whose English value changed, any locale still holding an

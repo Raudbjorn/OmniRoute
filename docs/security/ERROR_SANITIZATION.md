@@ -147,7 +147,7 @@ construct topology-bearing messages in the first place.
 - `sanitizeErrorMessage` handles `null`/`undefined`/`Error` instance inputs safely.
 - `buildErrorBody` never exposes stack traces in its `message` field.
 
-When adding a new route or executor, copy the assertion pattern from this file. The coverage gate (`npm run test:coverage`) enforces ≥60% statements/lines/functions/branches — error paths must be covered.
+When adding a new route or executor, copy the assertion pattern from this file — error paths must be covered by tests.
 
 ## Related controls
 

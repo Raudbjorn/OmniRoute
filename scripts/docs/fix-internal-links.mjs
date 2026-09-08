@@ -88,7 +88,6 @@ const DOC_TO_SUBFOLDER = {
   "RTK_COMPRESSION.md": "compression",
   // ops
   "RELEASE_CHECKLIST.md": "ops",
-  "COVERAGE_PLAN.md": "ops",
   "FLY_IO_DEPLOYMENT_GUIDE.md": "ops",
   "VM_DEPLOYMENT_GUIDE.md": "ops",
   "PROXY_GUIDE.md": "ops",

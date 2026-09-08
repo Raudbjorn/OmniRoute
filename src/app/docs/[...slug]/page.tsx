@@ -21,8 +21,9 @@ function getDocsLocale(): string {
 
 // ── i18n fallback ───────────────────────────────────────────────────────────
 // When locale ≠ "en", try to load the translated .md from
-// `docs/i18n/<locale>/docs/<section>/<FILE>.md` — the exact path layout that
-// `scripts/i18n/run-translation.mjs` produces. Returns rendered HTML or null.
+// `docs/i18n/<locale>/docs/<section>/<FILE>.md`. No docs translation mirrors
+// currently ship, so this always resolves to null and falls through to the
+// English MDX below. Returns rendered HTML or null.
 
 async function tryI18nFallback(slug: string[], locale: string): Promise<string | null> {
   if (!locale || locale === "en") return null;

@@ -2,24 +2,24 @@
 
 import { useTranslations } from "next-intl";
 
-import { useState, useEffect, useMemo, useCallback, useRef, useSyncExternalStore } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Card, CardSkeleton, Button, Modal } from "@/shared/components";
+import { Button, Card, CardSkeleton, Modal } from "@/shared/components";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { AI_PROVIDERS, NOAUTH_PROVIDERS, OAUTH_PROVIDERS } from "@/shared/constants/providers";
+import { useIsElectron, useOpenExternal } from "@/shared/hooks/useElectron";
+import { extractApiErrorMessage } from "@/shared/http/apiErrorMessage";
+import { copyToClipboard } from "@/shared/utils/clipboard";
 import {
   isProviderConnectionConnected,
   isProviderConnectionErrored,
 } from "@/shared/utils/providerConnectionStatus";
-import { useNotificationStore } from "@/store/notificationStore";
-import { extractApiErrorMessage } from "@/shared/http/apiErrorMessage";
-import { copyToClipboard } from "@/shared/utils/clipboard";
 import { getProviderDisplayLabel } from "@/shared/utils/providerDisplayLabel";
-import { useIsElectron, useOpenExternal } from "@/shared/hooks/useElectron";
+import { useNotificationStore } from "@/store/notificationStore";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import HomeRecentRequests from "../home/HomeRecentRequests";
 import { HomeProviderTopologySection } from "./HomeProviderTopologySection";
 import { shouldShowProviderTopologyOnHome } from "./homeAppearance";
-import HomeRecentRequests from "../home/HomeRecentRequests";
 
 type UpdateStep = {
   step: string;
@@ -153,20 +153,7 @@ export default function HomePageClient({ machineId }: HomePageClientProps) {
   const latestVersion = versionInfo?.latest || "";
   const electronDownload = useMemo(() => {
     const cleanLatest = latestVersion.replace(/^v/, "");
-    if (platform === "darwin") {
-      return {
-        label: t("downloadDmg"),
-        url: `https://github.com/diegosouzapw/OmniRoute/releases/download/v${cleanLatest}/OmniRoute-${cleanLatest}.dmg`,
-        desc: t("downloadDmgDescription", { version: installedVersion }),
-      };
-    }
-    if (platform === "win32") {
-      return {
-        label: t("downloadExe"),
-        url: `https://github.com/diegosouzapw/OmniRoute/releases/download/v${cleanLatest}/OmniRoute.Setup.${cleanLatest}.exe`,
-        desc: t("downloadExeDescription", { version: installedVersion }),
-      };
-    }
+
     if (platform === "linux") {
       return {
         label: t("downloadAppImage"),

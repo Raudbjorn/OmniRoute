@@ -96,11 +96,11 @@ export function diffAgainstBaseline(live, baseline) {
 
 function runTsc() {
   try {
-    const stdout = execFileSync(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["tsc", "--pretty", "false", "--noEmit", "-p", TSCONFIG],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ROOT }
-    );
+    const stdout = execFileSync("npx", ["tsc", "--pretty", "false", "--noEmit", "-p", TSCONFIG], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      cwd: ROOT,
+    });
     return stdout;
   } catch (err) {
     // tsc exits non-zero when there are type errors — stdout still has the report.
@@ -147,7 +147,9 @@ function main() {
       `[dashboard-typecheck] ${improvements.length} baselined error(s) no longer present ` +
         `— run 'node scripts/check/check-dashboard-typecheck.mjs --update' to ratchet the baseline down:\n` +
         improvements
-          .map((i) => `  - ${i.file} ${i.code} (baseline ${i.baselineCount} -> live ${i.liveCount})`)
+          .map(
+            (i) => `  - ${i.file} ${i.code} (baseline ${i.baselineCount} -> live ${i.liveCount})`
+          )
           .join("\n")
     );
   }

@@ -5,9 +5,9 @@
 // boot contended for CPU; it belongs in the serial (--test-concurrency=1)
 // integration runner. It still guards #4004's same-origin cookie-parse fix on
 // every PR via the integration CI job.
+import { SignJWT } from "jose";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { SignJWT } from "jose";
 import net from "node:net";
 import test from "node:test";
 import WebSocket from "ws";
@@ -89,7 +89,7 @@ test(
 
     const child = spawn(process.execPath, ["scripts/start-ws-server.mjs"], {
       cwd: process.cwd(),
-      detached: process.platform !== "win32",
+      detached: true,
       env: {
         ...process.env,
         NODE_ENV: "test",

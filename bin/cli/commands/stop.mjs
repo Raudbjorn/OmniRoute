@@ -1,14 +1,14 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import {
-  readPidFile,
-  isPidRunning,
-  cleanupPidFile,
-  killAllSubprocesses,
-  sleep,
-} from "../utils/pid.mjs";
 import { t } from "../i18n.mjs";
-import { stopProcessGracefully } from "../../../src/shared/platform/windowsProcess.ts";
+import {
+  cleanupPidFile,
+  isPidRunning,
+  killAllSubprocesses,
+  readPidFile,
+  sleep,
+  stopProcessGracefully,
+} from "../utils/pid.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -42,10 +42,7 @@ export async function runStopCommand(opts = {}) {
         await sleep(300);
       }
 
-      // #8045: on win32, process.kill(pid, "SIGTERM") unconditionally force-terminates
-      // the target instead of delivering an interceptable signal, racing (and beating)
-      // the server's own async graceful shutdown / WAL checkpoint. stopProcessGracefully
-      // skips the immediate SIGTERM on win32 and just polls before escalating to SIGKILL.
+      // Allow the server to finish its graceful shutdown before escalation.
       if (isPidRunning(pid)) {
         await stopProcessGracefully({ pid, timeoutMs: 5000, isPidRunning, sleep });
       }
@@ -77,8 +74,7 @@ export async function runStopCommand(opts = {}) {
     killAllSubprocesses();
     cleanupPidFile("server");
     cleanupPidFile("supervisor");
-    // #9455: only report success when the port is actually free — previously stop
-    // printed "Server stopped." even when killByPort was a no-op (win32).
+
     if (portFreed) {
       console.log(t("stop.stopped"));
     } else {
@@ -91,15 +87,6 @@ export async function runStopCommand(opts = {}) {
   return 0;
 }
 
-/**
- * Kill the process listening on `port`. Returns true once the port is free
- * (or no listener was found), false if it could not be freed.
- *
- * #9455: previously this was a no-op on win32 (`if (win32) return;`) yet the
- * caller still reported "Server stopped." — a lie. The win32 branch now uses
- * `netstat -ano` to find LISTENING PIDs and `process.kill()` (SIGTERM then
- * SIGKILL), mirroring the POSIX `lsof` path.
- */
 export async function killByPort(port, deps = {}) {
   const exec = deps.execFileAsync || execFileAsync;
   const kill = deps.processKill || ((p, sig) => process.kill(p, sig));
@@ -107,9 +94,6 @@ export async function killByPort(port, deps = {}) {
   const wait = deps.sleep || sleep;
   const platform = deps.platform || process.platform;
 
-  if (platform === "win32") {
-    return killByPortWin32(port, { exec, kill, running, wait });
-  }
   return killByPortPosix(port, { exec, kill, running, wait });
 }
 
@@ -136,37 +120,6 @@ async function killByPortPosix(port, { exec, kill, running, wait }) {
     // lsof not available or no process on port
   }
   return terminatePids(pids, { kill, running, wait });
-}
-
-async function killByPortWin32(port, { exec, kill, running, wait }) {
-  if (isTestEnvironment()) {
-    return true;
-  }
-  let pids = [];
-  try {
-    const { stdout } = await exec("netstat", ["-ano"]);
-    pids = parseNetstatPids(stdout, port);
-  } catch {
-    // netstat not available or empty
-  }
-  return terminatePids(pids, { kill, running, wait });
-}
-
-function parseNetstatPids(stdout, port) {
-  const portCol = `:${port}`;
-  const pids = [];
-  for (const line of stdout.split(/\r?\n/)) {
-    const cols = line.trim().split(/\s+/);
-    // Expected columns: Proto LocalAddress ForeignAddress State PID
-    if (cols.length < 5) continue;
-    if (cols[0] !== "TCP" && cols[0] !== "TCPv6") continue;
-    const local = cols[1] || "";
-    if (!local.endsWith(portCol)) continue;
-    if ((cols[cols.length - 2] || "").toUpperCase() !== "LISTENING") continue;
-    const pid = parseInt(cols[cols.length - 1], 10);
-    if (Number.isFinite(pid) && pid > 0 && !pids.includes(pid)) pids.push(pid);
-  }
-  return pids;
 }
 
 async function terminatePids(pids, { kill, running, wait }) {

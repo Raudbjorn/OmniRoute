@@ -1,8 +1,7 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 
-const { resolveVersionProbe, shouldUseShellForVersionProbe } =
-  await import("../../src/lib/acp/registry.ts");
+const { resolveVersionProbe } = await import("../../src/lib/acp/registry.ts");
 const { getAgentById } = await import("../../src/lib/acp/registry.ts");
 
 test("resolveVersionProbe parses quoted binary paths without shell semantics", () => {
@@ -65,16 +64,6 @@ test("resolveVersionProbe still accepts legitimate version flags for custom agen
     command: "my-agent",
     args: [],
   });
-});
-
-test("shouldUseShellForVersionProbe preserves Windows npm wrapper detection", () => {
-  assert.equal(shouldUseShellForVersionProbe("codex", "win32"), true);
-  assert.equal(
-    shouldUseShellForVersionProbe("C:\\Users\\dev\\AppData\\Roaming\\npm\\codex.cmd", "win32"),
-    true
-  );
-  assert.equal(shouldUseShellForVersionProbe("C:\\Tools\\claude.exe", "win32"), false);
-  assert.equal(shouldUseShellForVersionProbe("codex", "linux"), false);
 });
 
 test("Qwen Code is registered with its upstream ACP mode", () => {

@@ -23,12 +23,7 @@ const outFile = path.resolve(
 fs.mkdirSync(path.dirname(outFile), { recursive: true });
 
 const extra = process.argv.slice(2);
-const eslintBin = path.join(
-  root,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "eslint.cmd" : "eslint"
-);
+const eslintBin = path.join(root, "node_modules", ".bin", "eslint");
 const args = [
   ".",
   "--cache",
@@ -52,7 +47,7 @@ const args = [
 const result = spawnSync(eslintBin, args, {
   cwd: root,
   encoding: "utf8",
-  shell: process.platform === "win32",
+  shell: false,
   maxBuffer: 256 * 1024 * 1024,
 });
 

@@ -1,9 +1,8 @@
-import { spawn, execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { spawn } from "node:child_process";
 import os from "node:os";
-import { t } from "../i18n.mjs";
+import { join } from "node:path";
 import { resolveActiveContext } from "../contexts.mjs";
-import { quoteShellArgs } from "../utils/winShellArgs.mjs";
+import { t } from "../i18n.mjs";
 
 function stripTrailingSlash(value) {
   let s = String(value);
@@ -92,78 +91,6 @@ export function resolveLaunchTarget(opts = {}) {
 }
 
 /**
- * Probe PATH for a Windows executable via `where.exe`, preferring a `.exe` over
- * a `.cmd`/`.bat` shim. Returns the absolute path to the preferred binary, or
- * `null` when `where.exe` finds nothing (or cannot run).
- *
- * The native Anthropic installer (#9454) creates only `claude.exe` (no npm
- * `.cmd` shim), so the launcher must look for the real PE and spawn it without
- * a shell. Mirrors the existing `locateCommand()` probe in
- * `src/shared/services/cliRuntime.ts`.
- *
- * @param {string} command  bare command name to look up
- * @returns {Promise<string|null>} absolute path to the preferred match, or null
- */
-function probeWindowsBinary(command) {
-  try {
-    const out = execFileSync("where.exe", [command], {
-      stdio: ["ignore", "pipe", "ignore"],
-      encoding: "utf8",
-      timeout: 3000,
-      windowsHide: true,
-    });
-    const lines = out
-      .split(/\r?\n/)
-      .map((l) => l.trim())
-      .filter(Boolean);
-    if (lines.length === 0) return null;
-    const winExt = /\.(exe|cmd|bat|com)$/i;
-    return lines.find((l) => winExt.test(l)) || null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * #8246 / #9454: on Windows, npm installs claude as a `.cmd` shim — spawn()
- * without a shell cannot resolve PATHEXT shims (and Node refuses to exec `.cmd`
- * directly since CVE-2024-27980), so the npm-shim path must go through cmd.exe.
- * But the native installer creates only `claude.exe`, which is a real PE that
- * must NOT go through a shell (cmd.exe would split an absolute path with spaces).
- *
- * So probe PATH for `claude` first: when `where.exe` resolves a `.exe`, spawn it
- * directly (no shell); otherwise fall back to the npm `claude.cmd` + shell. Off
- * Windows the bare binary is spawned unchanged (no shell, no probe).
- *
- * @param {NodeJS.Platform|string} platform
- * @param {{ probe?: (command: string) => Promise<string|null> }} [opts]  injectable probe for tests
- * @returns {Promise<{ command: string, shell: true|undefined }>}
- */
-export async function resolveClaudeSpawn(platform, opts = {}) {
-  if (platform !== "win32") return { command: "claude", shell: undefined };
-  const probe = opts.probe ?? probeWindowsBinary;
-  const located = await probe("claude");
-  if (located && /\.exe$/i.test(located)) {
-    return { command: located, shell: undefined };
-  }
-  return { command: "claude.cmd", shell: true };
-}
-
-/**
- * `shell: true` makes Node join argv with plain spaces and no escaping (the
- * DEP0190 warning), so `-p "two words"` used to reach claude as `-p two` plus
- * three stray positional arguments. Quote the args ourselves on that path.
- * Off Windows there is no shell, so argv is passed through untouched.
- *
- * @param {string[]} args
- * @param {NodeJS.Platform|string} platform
- * @returns {string[]}
- */
-export function quoteClaudeArgs(args, platform) {
-  return quoteShellArgs(args, platform);
-}
-
-/**
  * @param {{port?:string, remote?:string, token?:string, apiKey?:string, profile?:string, claudeHome?:string}} opts
  * @param {string[]} claudeArgs  pass-through args for the claude binary
  * @returns {Promise<number>} exit code
@@ -195,14 +122,13 @@ export async function runLaunchCommand(opts = {}, claudeArgs = []) {
     model: opts.model,
   });
 
-  const { command, shell } = await resolveClaudeSpawn(process.platform);
+  const { command, shell } = { command: "claude", shell: undefined };
 
   return await new Promise((resolve) => {
-    const child = spawn(command, quoteClaudeArgs(claudeArgs, process.platform), {
+    const child = spawn(command, claudeArgs, {
       env,
       stdio: "inherit",
       shell,
-      ...(process.platform === "win32" ? { windowsHide: true } : {}),
     });
     let settled = false;
     const signalExitCode = { SIGINT: 130, SIGTERM: 143, SIGHUP: 129 };
@@ -262,10 +188,6 @@ export function registerLaunch(program) {
     .allowExcessArguments(true)
     .argument("[claudeArgs...]", "arguments passed through to the claude binary")
     .action(async (claudeArgs, opts) => {
-      // process.exit() here aborted the process with a libuv assertion on
-      // Windows (`!(handle->flags & UV_HANDLE_CLOSING)`, async.c:94): it tears
-      // the loop down while the inherited stdio handles of the just-exited
-      // child are still closing. Setting exitCode lets the loop drain first.
       process.exitCode = await runLaunchCommand(opts, claudeArgs ?? []);
     });
 }

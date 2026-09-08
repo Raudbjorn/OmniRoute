@@ -1,8 +1,8 @@
-import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createRequire } from "node:module";
+import { join } from "node:path";
+import { describe, it } from "node:test";
 
 const require = createRequire(import.meta.url);
 const {
@@ -75,13 +75,6 @@ describe("Electron main-process close policy wiring", () => {
     assert.match(
       mainSrc,
       /app\.on\("activate", \(\) => \{\s*if \(isHeadless\) return;\s*showMainWindow\(\);/
-    );
-  });
-
-  it("keeps the non-macOS app alive when unloading its last renderer", () => {
-    assert.match(
-      mainSrc,
-      /process\.platform !== "darwin"[\s\S]*closeBehavior !== CLOSE_BEHAVIOR_UNLOAD[\s\S]*app\.quit\(\)/
     );
   });
 });

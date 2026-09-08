@@ -303,7 +303,7 @@ export const CLI_TOOLS: Record<string, CliCatalogEntry> = {
     notes: [
       {
         type: "warning",
-        text: "Config paths: ~/.config/opencode/opencode.jsonc (preferred when present) or opencode.json on all platforms (Windows: %USERPROFILE%\\\\.config\\\\opencode\\\\opencode.jsonc or opencode.json)",
+        text: "Config paths: ~/.config/opencode/opencode.jsonc (preferred when present) or opencode.json",
       },
       {
         type: "warning",
@@ -794,7 +794,7 @@ OPENAI_API_KEY: "{{apiKey}}"`,
       },
       {
         type: "warning",
-        text: "Config path: Linux/macOS ~/.omp/agent/models.yml • Windows %USERPROFILE%\\.omp\\.omp\\agent\\models.yml",
+        text: "Config path: ~/.omp/agent/models.yml",
       },
     ],
   },

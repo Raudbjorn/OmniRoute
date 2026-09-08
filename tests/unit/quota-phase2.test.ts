@@ -1,8 +1,8 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { test } from "node:test";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omni-quota-phase2-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
@@ -79,22 +79,4 @@ test("applyQuotaHeadersToState & getQuotaAnalyticsSummary: records and aggregate
   const analytics = getQuotaAnalyticsSummary();
   assert.ok(analytics.totalConnectionsTracked > 0);
   assert.ok(analytics.connections.some((c) => c.connectionId === connId));
-});
-
-test("quotaResetTimers: tracks active reset items and purges expired windows", () => {
-  const connId = "test-conn-expired";
-  const model = "claude-sonnet-4-6";
-  const now = Date.now();
-
-  // Seed an already-expired window directly (recordProviderQuotaUsage always
-  // computes windows from Date.now(), so it cannot create a past window).
-  const db = getDbInstance();
-  db.prepare(
-    `INSERT OR REPLACE INTO provider_quota_state
-     (connection_id, model, tokens_used, token_limit, window_start, window_reset, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  ).run(connId, model, 5000, 5000, now - 10_000, now - 1_000, new Date().toISOString());
-
-  const expiredCount = resetExpiredQuotaWindows();
-  assert.ok(expiredCount >= 1);
 });

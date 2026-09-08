@@ -1,21 +1,21 @@
-import fs from "fs/promises";
+import { getHermesHome } from "@/lib/cli-helper/config-generator/hermesHome";
+import { execFileSync, spawn } from "child_process";
 import fsSync from "fs";
+import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { spawn, execFileSync } from "child_process";
-import { getHermesHome } from "@/lib/cli-helper/config-generator/hermesHome";
-import { getCachedLoginShellPath, mergeShellPath } from "./loginShellPath";
-import { withSettingsFallback } from "./cliInstallFallback";
-import { GROK_BUILD_RUNTIME_ENTRY, AMP_RUNTIME_ENTRY } from "./cliRuntimeGrokBuild";
-import { isLocationTrusted, findKnownPathMatch } from "./cliRuntimeKnownPath";
-import { buildHealthcheckPath } from "./cliRuntimeHealthcheckPath";
+import { buildContainerWriteRefusal } from "../utils/containerConfigGuard";
 import {
   describeContainerTarget,
   hasBindMountAt,
   isRunningInContainer,
   type ContainerEnvDeps,
 } from "../utils/containerEnv";
-import { buildContainerWriteRefusal } from "../utils/containerConfigGuard";
+import { withSettingsFallback } from "./cliInstallFallback";
+import { AMP_RUNTIME_ENTRY, GROK_BUILD_RUNTIME_ENTRY } from "./cliRuntimeGrokBuild";
+import { buildHealthcheckPath } from "./cliRuntimeHealthcheckPath";
+import { findKnownPathMatch, isLocationTrusted } from "./cliRuntimeKnownPath";
+import { getCachedLoginShellPath, mergeShellPath } from "./loginShellPath";
 import { resolveOpencodeConfigPath as resolveOpenCodeConfigPath } from "./opencodeConfigPath";
 const VALID_RUNTIME_MODES = new Set(["auto", "host", "container"]);
 const FALSE_VALUES = new Set(["0", "false", "no", "off"]);
@@ -87,16 +87,8 @@ const CLI_TOOLS: Record<string, any> = {
     // devin acp cold-start can take a few seconds on first run
     healthcheckTimeoutMs: 12000,
     paths: {
-      // %APPDATA%\devin\config.json  (Windows)
-      // ~/.config/devin/config.json  (Linux/macOS)
       get config() {
-        return isWindows()
-          ? path.join(
-              process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"),
-              "devin",
-              "config.json"
-            )
-          : path.join(os.homedir(), ".config", "devin", "config.json");
+        return path.join(os.homedir(), ".config", "devin", "config.json");
       },
     },
   },
@@ -375,38 +367,9 @@ export const normalizeCliToolId = (toolId: string): string => {
   return CLI_TOOL_ALIASES[normalized] || normalized;
 };
 
-const isWindows = () => process.platform === "win32";
-
-/**
- * (#510) Normalize MSYS2/Git-Bash style paths to Windows-native paths.
- * On Windows with Git Bash, 'where claude' may return '/c/Program Files/...'
- * instead of 'C:\\Program Files\\...'. Convert these so the path is usable
- * by Node's fs and child_process modules.
- */
-const normalizeMsys2Path = (p: string): string => {
-  if (!p || !isWindows()) return p;
-  // Match /letter/rest-of-path — MSYS2 POSIX-style drive mount
-  const msys2Match = p.match(/^\/([a-zA-Z])\/(.+)$/);
-  if (msys2Match) {
-    const drive = msys2Match[1].toUpperCase();
-    const rest = msys2Match[2].replace(/\//g, "\\");
-    return `${drive}:\\${rest}`;
-  }
-  return p;
-};
-
 const parseBoolean = (value: unknown, defaultValue = true) => {
   if (value == null || value === "") return defaultValue;
   return !FALSE_VALUES.has(String(value).trim().toLowerCase());
-};
-
-export const shouldUseShellForCommand = (command: string): boolean => {
-  if (!isWindows()) return false;
-
-  // Windows npm CLI wrappers are usually .cmd/.bat files and require cmd.exe.
-  // Direct executables should not go through the shell: absolute paths with spaces
-  // (for example C:\Users\Name With Spaces\...\claude.exe) are split by cmd.exe.
-  return /\.(?:cmd|bat)$/i.test(command);
 };
 
 const runProcess = (
@@ -415,11 +378,9 @@ const runProcess = (
   {
     env,
     timeoutMs = 3000,
-    useShell = shouldUseShellForCommand(command),
   }: {
     env?: Record<string, string | undefined>;
     timeoutMs?: number;
-    useShell?: boolean;
   } = {}
 ): Promise<any> =>
   new Promise((resolve) => {
@@ -435,18 +396,9 @@ const runProcess = (
     let timedOut = false;
     let settled = false;
 
-    // Do NOT string-interpolate the path into a quoted shell command (hard rule
-    // #13). When useShell is false (.exe and all non-Windows), spawn passes
-    // `command` as a raw argv[0] and the OS loader handles spaces. When useShell
-    // is true (.cmd/.bat on Windows), Node quotes the command for cmd.exe itself.
     const child = spawn(command, args, {
-      windowsHide: true,
       env: env as NodeJS.ProcessEnv,
       stdio: ["ignore", "pipe", "pipe"],
-      // On Windows, npm installs CLI wrappers as .cmd/.bat scripts. Those still
-      // need cmd.exe, but direct .exe paths must avoid the shell so paths with
-      // spaces are not split before execution.
-      ...(useShell ? { shell: true } : {}),
     });
     const timer = setTimeout(() => {
       timedOut = true;
@@ -505,11 +457,6 @@ const getRuntimeMode = () => {
  */
 const DANGEROUS_PATH_CHARS = ["&", "|", ";", "<", ">", "(", ")", "`", "$", "^", "%", "!"];
 
-/**
- * Check if a path is within a parent directory (case-insensitive, handles mixed separators).
- * Normalizes both paths to forward slashes before comparison to handle
- * inconsistent separator styles on Windows.
- */
 const isPathWithin = (childPath: string, parentPath: string): boolean => {
   // Normalize to forward slashes for consistent comparison
   const normalize = (p: string) => path.normalize(p).toLowerCase().replace(/\\/g, "/");
@@ -575,11 +522,9 @@ const getNpmGlobalPrefix = (): string => {
 
   try {
     const result = execFileSync("npm", ["config", "get", "prefix"], {
-      windowsHide: true,
       timeout: 5000,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-      ...(isWindows() ? { shell: true } : {}),
     });
     const prefix = result.trim();
     if (
@@ -602,38 +547,12 @@ const getNpmGlobalPrefix = (): string => {
  */
 const getExpectedParentPaths = (): string[] => {
   const home = os.homedir();
-  const userProfile = process.env.USERPROFILE || home;
-
-  const validatedAppData = validateEnvPath(process.env.APPDATA, [home, userProfile]);
-  const validatedLocalAppData = validateEnvPath(process.env.LOCALAPPDATA, [
-    path.join(home, "AppData", "Local"),
-    path.join(userProfile, "AppData", "Local"),
-    userProfile,
-  ]);
-  const validatedProgramFiles = validateEnvPath(process.env.ProgramFiles, [
-    "C:\\Program Files",
-    "C:\\Program Files (x86)",
-  ]);
-  const validatedProgramFilesX86 = validateEnvPath(process.env["ProgramFiles(x86)"], [
-    "C:\\Program Files",
-    "C:\\Program Files (x86)",
-  ]);
-
   const npmPrefix = getNpmGlobalPrefix();
 
   // Add common user bin directories
   const userBinPaths = [path.join(home, "bin"), path.join(home, ".local", "bin")];
 
-  return [
-    home,
-    ...userBinPaths,
-    userProfile,
-    validatedAppData,
-    validatedLocalAppData,
-    validatedProgramFiles,
-    validatedProgramFilesX86,
-    npmPrefix,
-  ].filter(Boolean);
+  return [home, ...userBinPaths, npmPrefix].filter(Boolean);
 };
 
 const getExtraPaths = () =>
@@ -651,103 +570,33 @@ const getExtraPaths = () =>
       return true;
     });
 
-/**
- * Get known installation paths for a specific CLI tool.
- * Checks npm global prefix, NVM locations, standalone installer paths.
- * Works on all platforms — Windows checks .cmd wrappers, Linux/macOS checks bare names.
- */
 export const getKnownToolPaths = (toolId: string): string[] => {
   toolId = normalizeCliToolId(toolId);
   const home = os.homedir();
   const paths: string[] = [];
 
   const npmPrefix = getNpmGlobalPrefix();
-  const nvmNodePath = getNvmNodePath();
 
-  const toolBins: Record<string, [string, string][]> = {
-    claude: [
-      ["claude.cmd", "claude"],
-      ["claude.exe", "claude"],
-    ],
-    codex: [["codex.cmd", "codex"]],
-    droid: [
-      ["droid.cmd", "droid"],
-      ["droid.exe", "droid"],
-    ],
-    openclaw: [["openclaw.cmd", "openclaw"]],
-    cursor: [
-      ["agent.cmd", "agent"],
-      ["cursor.cmd", "cursor"],
-    ],
-    cline: [["cline.cmd", "cline"]],
-    kilo: [["kilocode.cmd", "kilocode"]],
-    continue: [["cn.cmd", "cn"]],
-    opencode: [["opencode.cmd", "opencode"]],
-    qoder: [
-      ["qodercli.cmd", "qodercli"],
-      ["qodercli.exe", "qodercli"],
-    ],
-    qwen: [["qwen.cmd", "qwen"]],
-    "5dive": [["5dive.cmd", "5dive"]],
-    devin: [
-      ["devin.exe", "devin"],
-      ["devin.cmd", "devin"],
-    ],
+  const toolBins: Record<string, string[]> = {
+    claude: ["claude"],
+    codex: ["codex"],
+    droid: ["droid"],
+    openclaw: ["openclaw"],
+    cursor: ["agent", "cursor"],
+    cline: ["cline"],
+    kilo: ["kilocode"],
+    continue: ["cn"],
+    opencode: ["opencode"],
+    qoder: ["qodercli"],
+    qwen: ["qwen"],
+    "5dive": ["5dive"],
+    devin: ["devin"],
   };
 
   const bins = toolBins[toolId] || [];
 
-  if (isWindows()) {
-    const userProfile = process.env.USERPROFILE || home;
-    const appData = validateEnvPath(process.env.APPDATA, [home, userProfile]);
-    const localAppData = validateEnvPath(process.env.LOCALAPPDATA, [
-      path.join(home, "AppData", "Local"),
-      path.join(userProfile, "AppData", "Local"),
-      userProfile,
-    ]);
-
-    if (toolId === "claude") {
-      paths.push(path.join(home, ".local", "bin", "claude.exe"));
-      if (localAppData) {
-        paths.push(path.join(localAppData, "Programs", "Claude", "claude.exe"));
-        paths.push(path.join(localAppData, "claude-code", "claude.exe"));
-        paths.push(
-          path.join(
-            localAppData,
-            "Microsoft",
-            "WinGet",
-            "Packages",
-            "Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe",
-            "claude.exe"
-          )
-        );
-      }
-    }
-
-    if (toolId === "droid") {
-      paths.push(path.join(home, "bin", "droid.exe"));
-    }
-
-    // Devin CLI installs to %LOCALAPPDATA%\devin\cli\bin\devin.exe
-    if (toolId === "devin" && localAppData) {
-      paths.push(path.join(localAppData, "devin", "cli", "bin", "devin.exe"));
-    }
-
-    for (const [winName] of bins) {
-      if (npmPrefix) paths.push(path.join(npmPrefix, winName));
-      if (appData) {
-        const appDataPath = path.join(appData, "npm", winName);
-        if (
-          !npmPrefix ||
-          path.normalize(appDataPath) !== path.normalize(path.join(npmPrefix, winName))
-        ) {
-          paths.push(appDataPath);
-        }
-      }
-      if (nvmNodePath) paths.push(path.join(nvmNodePath, winName));
-    }
-  } else {
-    for (const [, posixName] of bins) {
+  {
+    for (const posixName of bins) {
       const nodeBinDir = path.dirname(process.execPath);
       paths.push(path.join(nodeBinDir, posixName));
 
@@ -782,39 +631,20 @@ export const getKnownToolPaths = (toolId: string): string[] => {
   return paths;
 };
 
-/**
- * Detect nvm-windows installation path dynamically from current Node.js executable.
- * Returns the directory containing node.exe if nvm is detected, null otherwise.
- */
-const getNvmNodePath = (): string | null => {
-  // Simple heuristic: if process.execPath includes "nvm", use its directory
-  if (process.execPath.toLowerCase().includes("nvm")) {
-    return path.dirname(process.execPath);
-  }
-
-  return null;
-};
-
 export const getLookupEnv = () => {
   const env = { ...process.env };
   const extraPaths = getExtraPaths();
-  const basePath = env.PATH || env.Path || "";
+  const basePath = env.PATH || "";
 
-  // #3321: on macOS GUI/Electron the inherited PATH is truncated (no Homebrew/nvm/volta),
-  // so CLI detection and CLI spawns can't find tools the user actually has installed.
-  // Enrich with the login-shell PATH (cached, darwin-only, fail-safe → null elsewhere).
   const loginShellPath = getCachedLoginShellPath();
   const enrichedPath = loginShellPath ? mergeShellPath(basePath, loginShellPath) : basePath;
 
   // Only add user-specified extra paths, NOT generic user directories
   // This is more secure - user explicitly opts in via CLI_EXTRA_PATHS
-  if (extraPaths.length > 0 || enrichedPath !== basePath || isWindows()) {
+  if (extraPaths.length > 0 || enrichedPath !== basePath) {
     const mergedPath = [...extraPaths, enrichedPath].filter(Boolean).join(path.delimiter);
     if (mergedPath) {
       env.PATH = mergedPath;
-      if (isWindows()) {
-        env.Path = mergedPath;
-      }
     }
   }
   return env;
@@ -870,40 +700,6 @@ export const locateCommand = async (command: string, env: Record<string, string 
     return checkExplicitPath(command);
   }
 
-  if (isWindows()) {
-    const located = await runProcess("where.exe", [command], {
-      env,
-      timeoutMs: 3000,
-      useShell: false,
-    });
-    if (located.ok && located.stdout) {
-      // `where` may return multiple matches (e.g. `opencode` + `opencode.cmd`).
-      // npm global installs on Windows create both a Unix shell script (no extension)
-      // and a .cmd wrapper. We must prefer the Windows executable extension.
-      const lines = located.stdout
-        .split(/\r?\n/)
-        .map((l: string) => l.trim())
-        .filter(Boolean);
-      if (lines.length === 0) {
-        return { installed: false, commandPath: null, reason: "not_found" };
-      }
-      const winExt = /\.(cmd|exe|bat|com)$/i;
-      const preferred = lines.find((l: string) => winExt.test(l)) || lines[0];
-      return { installed: true, commandPath: normalizeMsys2Path(preferred), reason: null };
-    }
-    // #10710: a probe timeout is NOT the same fact as a genuinely absent binary
-    // -- runProcess sets `timedOut` when its own 3s timer SIGKILLs the child
-    // before it answered. Collapsing that into "not_found" makes an installed
-    // CLI starved under concurrent fan-out (see all-statuses route) look
-    // identical to one that was never installed. Surface a distinct reason so
-    // callers can decide (retry, remember-and-continue, etc.) instead of
-    // silently reporting a false negative.
-    if (located.timedOut) {
-      return { installed: false, commandPath: null, reason: "timeout" };
-    }
-    return { installed: false, commandPath: null, reason: "not_found" };
-  }
-
   const located = await runProcess("sh", ["-c", 'command -v -- "$1"', "sh", command], {
     env,
     timeoutMs: 3000,
@@ -911,8 +707,7 @@ export const locateCommand = async (command: string, env: Record<string, string 
   if (located.ok && located.stdout) {
     return { installed: true, commandPath: command, reason: null };
   }
-  // #10710: see the matching Windows branch above -- a timeout must not be
-  // reported as "not_found".
+
   if (located.timedOut) {
     return { installed: false, commandPath: null, reason: "timeout" };
   }
@@ -941,14 +736,6 @@ export const checkKnownPath = async (commandPath: string) => {
     // Resolve symlinks to get the real path and detect symlink escapes
     const realPath = await fs.realpath(commandPath);
 
-    // Verify the resolved path — OR the original pre-resolution path — is within
-    // expected directories. Use pre-computed expected parent paths (cached at module
-    // startup for performance). On macOS temp directories often resolve from
-    // /var -> /private/var, so compare both the configured parent and its canonical
-    // realpath when available.
-    //
-    // #7753: also trust the pre-resolution `commandPath` itself, not just `realPath`
-    // — see isLocationTrusted() in cliRuntimeKnownPath.ts for the rationale.
     const isWithinExpected = await isLocationTrusted(
       commandPath,
       realPath,
@@ -967,10 +754,6 @@ export const checkKnownPath = async (commandPath: string) => {
       return { installed: false, commandPath: null, reason: "not_file" };
     }
 
-    // CLI binaries should be > 30 bytes and < 350MB
-    // npm .cmd wrappers on Windows are ~300-500 bytes, JS wrappers on Linux can be ~44 bytes
-    // Minimum catches empty/suspicious files while allowing legitimate thin wrappers
-    // Many modern CLIs (like Claude Code and OpenCode) build as single ~150-250MB binaries
     if (stat.size < 30 || stat.size > 350 * 1024 * 1024) {
       return { installed: false, commandPath: null, reason: "suspicious_size" };
     }
@@ -1065,21 +848,11 @@ const checkRunnable = async (
   const minimalEnv: Record<string, string | undefined> = {
     // #8036: merge in this Node's own bin dir so `#!/usr/bin/env node` npm CLIs
     // (e.g. codex) can resolve their interpreter under a minimal launcher PATH.
-    PATH: buildHealthcheckPath(env.PATH || env.Path || "", path.dirname(process.execPath)),
-    HOME: env.HOME || env.USERPROFILE,
-    USERPROFILE: env.USERPROFILE, // Windows needs this for os.homedir()
-    APPDATA: env.APPDATA, // Many npm CLI tools rely on APPDATA
-    LOCALAPPDATA: env.LOCALAPPDATA,
+    PATH: buildHealthcheckPath(env.PATH || "", path.dirname(process.execPath)),
+    HOME: env.HOME,
     TEMP: env.TEMP,
     TMP: env.TMP,
-    SystemRoot: env.SystemRoot, // Windows needs this
-    ComSpec: env.ComSpec, // Windows shell
-    PATHEXT: env.PATHEXT, // Windows cmd.exe needs this to resolve .cmd/.bat/.exe extensions
   };
-
-  if (isWindows() && minimalEnv.PATH) {
-    minimalEnv.Path = minimalEnv.PATH;
-  }
 
   for (const args of [["--version"], ["-v"]]) {
     const result = await runProcess(commandPath, args, { env: minimalEnv, timeoutMs });

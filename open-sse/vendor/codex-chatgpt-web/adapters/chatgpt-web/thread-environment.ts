@@ -4,9 +4,9 @@ import { isAbsolute, relative, resolve } from "node:path";
 import { atomicWriteFile } from "../../config";
 import type { CodexParsedRequest } from "../../types";
 import {
+  extractChatGptThreadSpawnLineage,
   extractChatGptTurnEnvironment,
   extractChatGptTurnIdentity,
-  extractChatGptThreadSpawnLineage,
   MissingTrustedCodexEnvironmentError,
   type ChatGptSandboxPolicy,
   type ChatGptTurnEnvironment,
@@ -36,7 +36,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function pathIdentity(value: string): string {
   const normalized = resolve(value);
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  return normalized;
 }
 
 function contains(root: string, path: string): boolean {

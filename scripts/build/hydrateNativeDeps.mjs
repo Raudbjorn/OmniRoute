@@ -1,19 +1,4 @@
 #!/usr/bin/env node
-/**
- * Platform hydration for the shared Next standalone web build (issue #10321,
- * Stage 8).
- *
- * The standalone bundle is built ONCE on ubuntu and restored on every desktop
- * matrix leg. Everything except install-machine-forked optional packages is
- * platform-independent:
- *
- *  - Bundled-for-all (verify only): better-sqlite3 v13 ships Node-API prebuilds
- *    for 8 platforms, and onnxruntime-node ships `bin/napi-v6/<os>/<arch>`.
- *  - Install-machine-forked (hydrate): `@img/sharp-*`, `@img/sharp-libvips-*`,
- *    `@ngrok/ngrok-*`, `@wreq-js/binding-*`, and macOS-only `fsevents` resolve
- *    to whichever platform ran `npm ci`. The ubuntu-built tree carries the
- *    linux forks; each leg replaces them with the forks from its OWN install.
- */
 
 import fs from "node:fs";
 import path from "node:path";
@@ -31,11 +16,7 @@ export const HYDRATED_SCOPES = [
 /** Standalone packages that are not forked but must never be platform-forked. */
 export const HYDRATED_ROOT_PACKAGES = ["fsevents"];
 
-/**
- * onnxruntime-node does not publish a darwin-x64 binary for napi-v6 (only
- * linux/win32 x64 + darwin arm64), so existence cannot be asserted there.
- */
-export const BUNDLED_EXEMPTIONS = new Set(["onnxruntime-node:darwin-x64"]);
+export const BUNDLED_EXEMPTIONS = new Set();
 
 function platformTriple(platform, arch) {
   return { dash: `${platform}-${arch}` };
@@ -92,7 +73,7 @@ export function hydratePlatformNatives({ standaloneNodeModules, sourceNodeModule
     if (hadIt) rmrf(standalonePath);
     if (!hasIt) {
       if (hadIt) removed.push(name);
-      continue; // e.g. fsevents on non-darwin legs: simply absent everywhere.
+      continue;
     }
     copyDir(sourcePath, standalonePath);
     copied.push(name);

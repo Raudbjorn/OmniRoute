@@ -13,28 +13,28 @@
 
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
+  cpSync,
   existsSync,
   mkdirSync,
-  cpSync,
-  rmSync,
-  writeFileSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
-  chmodSync,
+  writeFileSync,
 } from "node:fs";
-import { join, dirname, relative } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { assembleStandalone } from "./assembleStandalone.mjs";
 import { isNativeExecutable, resolveLocalBinEntry } from "./buildToolRunner.mjs";
-import { resolveBundledNpmEntry } from "./resolveNpmEntry.ts";
 import {
   APP_STAGING_ALLOWED_EXACT_PATHS,
   APP_STAGING_ALLOWED_PATH_PREFIXES,
   APP_STAGING_REMOVAL_PATHS,
   findUnexpectedArtifactPaths,
 } from "./pack-artifact-policy.ts";
+import { resolveBundledNpmEntry } from "./resolveNpmEntry.ts";
 import {
   collectWorkspaceVersions,
   findPackageJsonFiles,
@@ -45,19 +45,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const ROOT = join(__dirname, "..", "..");
-const NPX_BIN = process.platform === "win32" ? "npx.cmd" : "npx";
-
-// On Windows the npm/npx entry points are `.cmd` shims, and Node >= 20 refuses to
-// spawn a `.cmd` without a shell (EINVAL, from the CVE-2024-27980 hardening). On
-// Node 24 that makes every `execFileSync(NPX_BIN, ...)` in this script fail, which
-// silently skipped the MITM utilities, the MCP server bundle, the LLMLingua worker
-// and the OpenCode plugin while the build still reported success.
-//
-// `shell: true` would fix the spawn but disables argument escaping (DEP0190), so it
-// is only the last resort. Preferred order: run the tool's own JS entry point with
-// this Node binary — no shim, no shell, nothing to escape. `resolveLocalBinEntry()`
-// and `isNativeExecutable()` implement that resolution and now live in
-// buildToolRunner.mjs, shared with the plain-`node` build scripts.
+const NPX_BIN = "npx";
 
 /**
  * Runs a build tool without ever touching a `.cmd` shim. `packageName` is where the
@@ -88,7 +76,7 @@ function runBuildTool(
   // so the missing escaping under `shell` is not an injection surface.
   execFileSync(NPX_BIN, [binName, ...args], {
     ...options,
-    shell: process.platform === "win32",
+    shell: false,
   });
 }
 
@@ -519,17 +507,11 @@ if (existsSync(opencodePluginSrc) && existsSync(join(opencodePluginSrc, "package
               cwd: opencodePluginSrc,
               stdio: "inherit",
             });
-          } else if (process.platform !== "win32") {
-            // No bundled npm entry found (non-standard Node layout). Plain `npm` is
-            // safe here — the .cmd-shim hazard #8858 guards against is Windows-only.
+          } else {
             execFileSync("npm", installArgs, {
               cwd: opencodePluginSrc,
               stdio: "inherit",
             });
-          } else {
-            throw new Error(
-              "npm-cli.js not found next to the running Node binary; cannot install the plugin dependencies without falling back to a .cmd shim."
-            );
           }
         };
         const sleepSync = (ms: number) =>

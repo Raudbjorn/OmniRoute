@@ -1,8 +1,4 @@
 import { execFile, execFileSync, spawn } from "child_process";
-import fs from "fs";
-import os from "os";
-import path from "path";
-import crypto from "crypto";
 
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -16,26 +12,7 @@ export function isRoot(): boolean {
   }
 }
 
-/**
- * Probe whether `sudo` is discoverable on PATH.
- *
- * Slim Docker images (e.g. `node:24-trixie-slim` used by OmniRoute's runtime
- * stage) do not ship `sudo`. When the container runs as a non-root user
- * (`USER node`, UID 1000), `spawn("sudo", ...)` fails with ENOENT and breaks
- * any MITM operation triggered from inside the container. `execFileWithPassword`
- * uses this probe to gracefully degrade: if sudo is missing and we are not
- * root, the underlying command is executed directly (same user, no elevation).
- *
- * Returns `false` on Windows — sudo is meaningless there (UAC path is used).
- * Read `os.platform()` at call time: a literal `process.platform` is
- * constant-folded to the Linux build host, so the published Windows artifact
- * would probe and then spawn native `sudo.exe` with POSIX `-S` (#11430).
- *
- * `execFileSync` is invoked with a fixed-string `command` and `args`,
- * never user input, and `stdio: "ignore"` so the probe is silent.
- */
 export function isSudoAvailable(): boolean {
-  if (os.platform() === "win32") return false;
   try {
     // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
     execFileSync("sh", ["-c", "command -v sudo"], { stdio: "ignore" });
@@ -145,7 +122,7 @@ export function execFileWithPassword(
     // nosemgrep
     const child = spawn(finalCommand, finalArgs, {
       // nosemgrep
-      windowsHide: true,
+
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -187,99 +164,4 @@ export function execFileWithPassword(
     }
     child.stdin?.end();
   });
-}
-
-export function quotePowerShell(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
-}
-
-export function runPowerShell(script: string): Promise<string> {
-  return execFileText("powershell", [
-    "-NoProfile",
-    "-NonInteractive",
-    "-ExecutionPolicy",
-    "Bypass",
-    "-Command",
-    script,
-  ]);
-}
-
-/**
- * Build the outer (non-elevated) wrapper script that triggers UAC and spawns
- * the elevated powershell with `-File <scriptPath>`. Exported separately so
- * regression tests can assert the textbook `-EncodedCommand` fingerprint is
- * absent without needing to monkey-patch the child_process spawn path.
- */
-export function buildElevatedScriptWrapper(scriptPath: string): string {
-  return `
-    $proc = Start-Process powershell -ArgumentList @(
-      '-NoProfile',
-      '-NonInteractive',
-      '-ExecutionPolicy',
-      'Bypass',
-      '-File',
-      ${quotePowerShell(scriptPath)}
-    ) -Verb RunAs -Wait -PassThru;
-    if ($proc.ExitCode -ne 0) {
-      throw "Elevated command exited with code $($proc.ExitCode)"
-    }
-  `;
-}
-
-// SECURITY-AUDITOR-NOTE: This function is referenced by Socket.dev finding
-// `21843.js` (AI-detected potential malware) on the published npm artifact.
-// Mitigation applied in v3.8.6:
-//   - The elevated payload is written to a per-call temp .ps1 file owned by the
-//     local user (mode 0o600) and referenced via `-File`. We no longer use
-//     `-EncodedCommand <base64utf16le>`, which is the textbook fingerprint
-//     pattern-matched by heuristic AV/AI scanners.
-//   - Each call uses a fresh `crypto.randomUUID()` filename inside a private
-//     `mkdtempSync` directory so concurrent calls cannot collide and a third
-//     party cannot guess the path.
-//   - The temp file is unlinked in `finally` even if the UAC prompt is denied
-//     or the elevated command throws.
-//   - This function is only invoked from `installCertWindows` and
-//     `uninstallCertWindows` (src/mitm/cert/install.ts) which themselves only
-//     run when a user explicitly enables or disables the MITM proxy from the
-//     local dashboard at /dashboard/cli-tools/mitm.
-// See docs/security/SOCKET_DEV_FINDINGS.md §3 for the full attestation.
-export async function runElevatedPowerShell(script: string): Promise<string> {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-elevate-"));
-  const scriptName = `omniroute-elevate-${crypto.randomUUID()}.ps1`;
-  const scriptPath = path.join(tempDir, scriptName);
-  fs.writeFileSync(scriptPath, script, { encoding: "utf8", mode: 0o600 });
-  try {
-    return await runPowerShell(buildElevatedScriptWrapper(scriptPath));
-  } finally {
-    try {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch {
-      // Best-effort cleanup: leftover files in $TMPDIR are owned by the local
-      // user and the OS cleans them on next reboot.
-    }
-  }
-}
-
-/**
- * Test-only helper that mirrors `runElevatedPowerShell`'s temp-file lifecycle
- * but lets the caller substitute the spawn path. Used by the regression test
- * for the `-EncodedCommand` removal — production code must NOT call this.
- */
-export async function _runElevatedPowerShellForTest(
-  script: string,
-  runner: (wrapper: string, scriptPath: string) => Promise<string>
-): Promise<string> {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-elevate-"));
-  const scriptName = `omniroute-elevate-${crypto.randomUUID()}.ps1`;
-  const scriptPath = path.join(tempDir, scriptName);
-  fs.writeFileSync(scriptPath, script, { encoding: "utf8", mode: 0o600 });
-  try {
-    return await runner(buildElevatedScriptWrapper(scriptPath), scriptPath);
-  } finally {
-    try {
-      fs.rmSync(tempDir, { recursive: true, force: true });
-    } catch {
-      // Best-effort cleanup.
-    }
-  }
 }

@@ -3,11 +3,11 @@
  * npm prefix deduplication, and env var overrides.
  */
 
-import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { after, before, describe, it } from "node:test";
 
 const { getCliRuntimeStatus, getKnownToolPaths, normalizeCliToolId, CLI_TOOL_IDS } =
   await import("../../src/shared/services/cliRuntime.ts");
@@ -22,33 +22,10 @@ function createTempDir() {
   return fs.mkdtempSync(path.join(testRoot, "cli-test-"));
 }
 
-describe("Claude Code Windows known paths", () => {
-  it("should include the WinGet Anthropic.ClaudeCode install path", () => {
-    const localAppData = process.env.LOCALAPPDATA;
-    const expected = localAppData
-      ? path.join(
-          localAppData,
-          "Microsoft",
-          "WinGet",
-          "Packages",
-          "Anthropic.ClaudeCode_Microsoft.Winget.Source_8wekyb3d8bbwe",
-          "claude.exe"
-        )
-      : null;
-
-    if (process.platform !== "win32" || !expected) return;
-
-    assert.ok(
-      getKnownToolPaths("claude").includes(expected),
-      "Claude Code installed by WinGet should be discoverable without CLI_CLAUDE_BIN"
-    );
-  });
-});
-
 function createFile(dir, name, content) {
   const filePath = path.join(dir, name);
   fs.writeFileSync(filePath, content);
-  if (process.platform !== "win32") {
+  {
     fs.chmodSync(filePath, 0o755);
   }
   return filePath;
@@ -107,10 +84,7 @@ describe("Size threshold — checkKnownPath", () => {
   it("should detect files >= 30 bytes via env var", async () => {
     const prev = process.env.CLI_DROID_BIN;
     // Create a valid 30-byte+ script (using spaces/comments for padding, NO \r on linux)
-    const content =
-      process.platform === "win32"
-        ? "@echo off\r\necho 1.0.0\r\nREM PADDING_PADDIN\r\nexit 0\r\n"
-        : "#!/bin/sh\necho 1.0.0\n# PADDING_PADDING_PAD\nexit 0\n";
+    const content = "#!/bin/sh\necho 1.0.0\n# PADDING_PADDING_PAD\nexit 0\n";
     const script = createFile(tmpDir, "droid-valid", content);
     // Verify it's at least 30 bytes
     const stat = fs.statSync(script);
@@ -130,14 +104,8 @@ describe("Size threshold — checkKnownPath", () => {
   it("should detect a valid CLI script (>= 30 bytes) via env var", async () => {
     const prev = process.env.CLI_DROID_BIN;
     // Ensure the size stays > 30 bytes without \r\n on bash
-    const content =
-      process.platform === "win32"
-        ? "@echo off\r\necho 1.0.0\r\nREM PADDING_PAD\r\n"
-        : "#!/bin/sh\necho 1.0.0\n# PADDING_PADDING_PAD\n";
-    const script =
-      process.platform === "win32"
-        ? createFile(tmpDir, "droid.cmd", content)
-        : createFile(tmpDir, "droid", content);
+    const content = "#!/bin/sh\necho 1.0.0\n# PADDING_PADDING_PAD\n";
+    const script = createFile(tmpDir, "droid", content);
 
     process.env.CLI_DROID_BIN = script;
     try {
@@ -169,10 +137,7 @@ describe("Healthcheck — checkRunnable", () => {
 
   it("should report runnable=true for a script that outputs version", async () => {
     const prev = process.env.CLI_CLINE_BIN;
-    const script =
-      process.platform === "win32"
-        ? createFile(tmpDir, "good.cmd", "@echo off\necho 1.0.0\n")
-        : createFile(tmpDir, "good", "#!/bin/sh\necho 1.0.0\n");
+    const script = createFile(tmpDir, "good", "#!/bin/sh\necho 1.0.0\n");
 
     process.env.CLI_CLINE_BIN = script;
     try {
@@ -190,11 +155,8 @@ describe("Healthcheck — checkRunnable", () => {
 
   it("should detect Claude through an explicit read-only executable path", async () => {
     const previousOverride = process.env.CLI_CLAUDE_BIN;
-    const script =
-      process.platform === "win32"
-        ? createFile(tmpDir, "claude.cmd", "@echo off\necho 2.1.211 (Claude Code)\n")
-        : createFile(tmpDir, "claude", "#!/bin/sh\necho '2.1.211 (Claude Code)'\n");
-    if (process.platform !== "win32") fs.chmodSync(script, 0o555);
+    const script = createFile(tmpDir, "claude", "#!/bin/sh\necho '2.1.211 (Claude Code)'\n");
+    fs.chmodSync(script, 0o555);
     process.env.CLI_CLAUDE_BIN = script;
 
     try {
@@ -211,10 +173,7 @@ describe("Healthcheck — checkRunnable", () => {
 
   it("should detect qodercli via env override and mark it runnable", async () => {
     const prev = process.env.CLI_QODER_BIN;
-    const script =
-      process.platform === "win32"
-        ? createFile(tmpDir, "qoder.cmd", "@echo off\necho qodercli 0.1.37\n")
-        : createFile(tmpDir, "qodercli", "#!/bin/sh\necho qodercli 0.1.37\n");
+    const script = createFile(tmpDir, "qodercli", "#!/bin/sh\necho qodercli 0.1.37\n");
 
     process.env.CLI_QODER_BIN = script;
     try {
@@ -306,31 +265,6 @@ describe("resolveOpencodeConfigPath — cross-platform", () => {
   it("should resolve on Linux with default .config", () => {
     const result = resolveOpencodeConfigPathFn("linux", {}, "/home/dev");
     assert.equal(result, path.join("/home/dev", ".config", "opencode", "opencode.json"));
-  });
-
-  it("should resolve on Windows under ~/.config (XDG, NOT %APPDATA% — #3330)", () => {
-    // #3330: OpenCode reads its config from ~/.config/opencode on every
-    // platform, including Windows (%USERPROFILE%\.config). %APPDATA% is ignored.
-    const result = resolveOpencodeConfigPathFn(
-      "win32",
-      { APPDATA: "C:\\Users\\dev\\AppData\\Roaming" },
-      "C:\\Users\\dev"
-    );
-    assert.equal(result, path.join("C:\\Users\\dev", ".config", "opencode", "opencode.json"));
-  });
-
-  it("should resolve on Windows under ~/.config without APPDATA (#3330)", () => {
-    const result = resolveOpencodeConfigPathFn("win32", {}, "C:\\Users\\dev");
-    assert.equal(result, path.join("C:\\Users\\dev", ".config", "opencode", "opencode.json"));
-  });
-
-  it("should honor XDG_CONFIG_HOME on Windows too (#3330)", () => {
-    const result = resolveOpencodeConfigPathFn(
-      "win32",
-      { XDG_CONFIG_HOME: "D:\\xdg" },
-      "C:\\Users\\dev"
-    );
-    assert.equal(result, path.join("D:\\xdg", "opencode", "opencode.json"));
   });
 
   it("selects an existing opencode.jsonc instead of inventing opencode.json (#10227)", () => {

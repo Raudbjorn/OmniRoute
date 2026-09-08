@@ -36,7 +36,6 @@ const { hasEncryptedCredentials } = require("./sqlite-inspection");
 const { loginManager } = require("./loginManager");
 const { killProcessTree } = require("./processTree");
 const { resolveServerEntry } = require("./lib/resolveServerEntry");
-const { resolveDarwinHelperExecutable } = require("./lib/resolveNodeHelper");
 const { resolveRemoteServerUrl, isValidHttpUrl } = require("./lib/resolveRemoteServerUrl");
 const {
   readPreferences,
@@ -106,27 +105,6 @@ const getServerUrl = () => remoteServerUrl || `http://localhost:${serverPort}`;
 const getServerReadinessUrl = () => buildReadinessUrl(getServerUrl());
 
 function resolveNodeExecutable(env = process.env) {
-  // #1081: Ensure Next.js standalone runs using Electron's Node runtime
-  // instead of a randomly found system Node to prevent ABI architecture mismatches.
-  //
-  // On macOS packaged builds, process.execPath is the main Electron binary
-  // (e.g. OmniRoute.app/Contents/MacOS/OmniRoute). Spawning it with
-  // ELECTRON_RUN_AS_NODE causes macOS to show a second dock icon and/or
-  // flash a shell window. Use the Helper binary instead — macOS treats
-  // Helper processes as background tasks with no visible UI artifacts.
-  if (process.platform === "darwin" && !isDev) {
-    // #7941: derive the Helper name from the packaged binary name
-    // (path.basename(process.execPath)) rather than app.getName(). electron-builder
-    // generates BOTH the main binary and the Helper.app bundles from build.productName
-    // ("OmniRoute"), whereas app.getName() reads package.json `name` ("omniroute-desktop")
-    // — the two diverged, so app.getName() never matched a real Helper path and this fell
-    // through to process.execPath, spawning the main Electron binary and producing a
-    // second, inert macOS Dock icon.
-    const helper = resolveDarwinHelperExecutable({ execPath: process.execPath });
-    if (helper) {
-      return helper;
-    }
-  }
   return process.execPath;
 }
 
@@ -198,11 +176,6 @@ function resolveDataDir(overridePath, env = process.env) {
   const configured = env.DATA_DIR?.trim();
   if (configured) return path.resolve(configured);
 
-  if (process.platform === "win32") {
-    const appData = env.APPDATA || path.join(require("os").homedir(), "AppData", "Roaming");
-    return path.join(appData, "omniroute");
-  }
-
   const xdg = env.XDG_CONFIG_HOME?.trim();
   if (xdg) return path.join(path.resolve(xdg), "omniroute");
 
@@ -242,8 +215,6 @@ async function waitForServerExit(proc, timeoutMs = 5000) {
     new Promise((r) =>
       setTimeout(() => {
         try {
-          // #3347: force-kill the whole tree (Windows leaves grandchildren alive on a
-          // bare SIGKILL of the direct child, keeping omniroute.exe locked).
           killProcessTree(proc, { signal: "SIGKILL" });
         } catch {
           /* already dead */
@@ -387,10 +358,7 @@ function createWindow({ showWhenReady = true } = {}) {
   const rendererStartedAt = Date.now();
 
   // Platform-conditional options (#9)
-  const platformWindowOptions =
-    process.platform === "darwin"
-      ? { titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 16 } }
-      : { titleBarStyle: "default" };
+  const platformWindowOptions = { titleBarStyle: "default" };
 
   const window = new BrowserWindow({
     width: 1400,
@@ -498,10 +466,6 @@ function createTray() {
   try {
     icon = nativeImage.createFromPath(iconPath);
     if (icon.isEmpty()) icon = nativeImage.createEmpty();
-    if (process.platform === "darwin" && !icon.isEmpty()) {
-      icon = icon.resize({ width: 20, height: 20 });
-      icon.setTemplateImage(true);
-    }
   } catch {
     icon = nativeImage.createEmpty();
   }
@@ -827,22 +791,13 @@ function startNextServer() {
   console.log("[Electron] Server NODE_OPTIONS:", serverNodeOptions);
   sendToRenderer("server-status", { status: "starting", port: serverPort });
 
-  // Fix #10: Use pipe instead of inherit for logging & readiness detection
-  // windowsHide prevents a visible console window from spawning alongside the GUI app.
-  // shell: false avoids launching via a shell wrapper which can flash a terminal on macOS.
   nextServer = spawn(nodeExecutable, [serverScript], {
     cwd: NEXT_SERVER_PATH,
     env: {
       ...serverEnv,
       DATA_DIR: dataDir,
       PORT: String(serverPort),
-      // Pin the embedded server to loopback. Next.js standalone binds to
-      // `process.env.HOSTNAME || '0.0.0.0'`, and Windows always exports
-      // HOSTNAME as the machine name — which resolves to the LAN address, so
-      // the server listens only there and 127.0.0.1 stays closed. The renderer
-      // then fails to load `http://localhost:<port>`, "ready-to-show" never
-      // fires, and the window (created with `show: false`) is never shown.
-      // Mirrors scripts/dev/run-next-playwright.mjs, which already pins this.
+
       HOSTNAME: "127.0.0.1",
       NODE_ENV: "production",
       ELECTRON_RUN_AS_NODE: "1",
@@ -850,7 +805,7 @@ function startNextServer() {
       NODE_OPTIONS: serverNodeOptions,
     },
     stdio: "pipe",
-    windowsHide: true,
+
     shell: false,
   });
 
@@ -894,9 +849,6 @@ function startNextServer() {
 
 function stopNextServer() {
   if (nextServer) {
-    // #3347: kill the whole tree, not just the direct child. On Windows the server
-    // (omniroute.exe-as-node) spawns grandchildren that a bare SIGTERM leaves alive,
-    // holding a lock on omniroute.exe and blocking updates.
     killProcessTree(nextServer, { signal: "SIGTERM" });
     nextServer = null;
   }
@@ -1195,25 +1147,18 @@ app.whenReady().then(async () => {
     }, 3000);
   }
 
-  // macOS: recreate window when dock icon clicked
   app.on("activate", () => {
     if (isHeadless) return;
     showMainWindow();
   });
 });
 
-// Quit when all windows closed (except macOS)
 app.on("window-all-closed", () => {
   const isHeadless =
     process.argv.includes("--headless") ||
     process.argv.includes("--cli") ||
     process.env.OMNIROUTE_HEADLESS === "true";
-  if (
-    process.platform !== "darwin" &&
-    !isHeadless &&
-    !keepAliveWithoutWindows &&
-    closeBehavior !== CLOSE_BEHAVIOR_UNLOAD
-  ) {
+  if (!isHeadless && !keepAliveWithoutWindows && closeBehavior !== CLOSE_BEHAVIOR_UNLOAD) {
     app.quit();
   }
 });

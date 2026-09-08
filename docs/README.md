@@ -188,7 +188,6 @@ Release, deployment, proxies, tunnels, coverage, database, monitoring.
 - [RUNNER_BOX.md](ops/RUNNER_BOX.md) — self-hosted runner box operations.
 - [BRANCH_PROTECTION_MAIN.md](ops/BRANCH_PROTECTION_MAIN.md) — `main` branch protection.
 - [CONTRIBUTION_GOLDEN_PATH.md](ops/CONTRIBUTION_GOLDEN_PATH.md) — contribution golden path (focused checks per change type).
-- [COVERAGE_PLAN.md](ops/COVERAGE_PLAN.md) — test coverage plan.
 - [DATABASE_GUIDE.md](ops/DATABASE_GUIDE.md) — DB schema and operations.
 - [SQLITE_RUNTIME.md](ops/SQLITE_RUNTIME.md) — SQLite driver resolution chain.
 - [REDIS_PRODUCTION_CONFIG.md](ops/REDIS_PRODUCTION_CONFIG.md) — Redis production configuration.

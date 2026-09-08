@@ -9,19 +9,19 @@
 // Instead of mocking child_process, we put a fake `npm` on PATH that records its
 // arguments to a log file and exits 0. This exercises the real spawnSync/execSync
 // code path with zero network use.
-import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  mkdtempSync,
-  rmSync,
-  mkdirSync,
-  writeFileSync,
   chmodSync,
   existsSync,
+  mkdirSync,
+  mkdtempSync,
   readFileSync,
+  rmSync,
+  writeFileSync,
 } from "node:fs";
-import { join, delimiter } from "node:path";
 import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import test from "node:test";
 
 let tmpDir: string;
 let binDir: string;
@@ -64,7 +64,7 @@ function installLineFor(pkgPrefix: string): string | undefined {
 }
 
 test("npmInstallRuntime saves better-sqlite3 with --save-exact (never --no-save)", async (t) => {
-  if (process.platform === "win32") return; // sh stub is POSIX-only
+  // sh stub is POSIX-only
   setup();
   t.after(teardown);
 
@@ -79,7 +79,7 @@ test("npmInstallRuntime saves better-sqlite3 with --save-exact (never --no-save)
 });
 
 test("installSystray saves systray2 with --save-exact (never --no-save)", async (t) => {
-  if (process.platform === "win32") return; // loadSystray returns null on win32
+  // loadSystray returns null on win32
   setup();
   t.after(teardown);
 

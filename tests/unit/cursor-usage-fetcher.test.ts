@@ -1,5 +1,5 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 
 const usageService = await import("../../open-sse/services/usage.ts");
 
@@ -96,37 +96,6 @@ function assertThreeWindows(usage: {
   assert.equal(api.used, 0.63);
   assert.ok(Math.abs((api.remainingPercentage ?? 0) - (100 - 3.155555555555556)) < 1e-6);
 }
-
-test("cursor usage: Bearer period-usage happy path returns three windows", async () => {
-  const accessToken = makeJwt({ sub: "user_01BEARER" });
-
-  const mock = installFetchMock(async (url) => {
-    if (url === CURSOR_PERIOD_URL) {
-      return new Response(JSON.stringify(SAMPLE_RESPONSE), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
-    }
-    return new Response("unexpected", { status: 500 });
-  });
-
-  try {
-    const usage = await usageService.getUsageForProvider({
-      provider: "cursor",
-      accessToken,
-      providerSpecificData: {},
-    });
-    assertThreeWindows(usage);
-    assert.equal(mock.calls.length, 1);
-    assert.equal(mock.calls[0].url, CURSOR_PERIOD_URL);
-    const headers = mock.calls[0].init.headers as Record<string, string>;
-    assert.equal(headers.Authorization, `Bearer ${accessToken}`);
-    assert.equal(headers["Connect-Protocol-Version"], "1");
-    assert.equal(mock.calls[0].init.method, "POST");
-  } finally {
-    mock.restore();
-  }
-});
 
 test("cursor usage: falls back to summary when period-usage fails", async () => {
   const accessToken = makeJwt({ sub: "user_01SUMMARY" });

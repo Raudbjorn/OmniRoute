@@ -27,10 +27,10 @@
  */
 
 import { spawn } from "node:child_process";
-import path from "node:path";
-import os from "node:os";
 import fs from "node:fs";
-import { BaseExecutor, type ExecuteInput, type ProviderCredentials } from "./base.ts";
+import os from "node:os";
+import path from "node:path";
+import { BaseExecutor, type ExecuteInput } from "./base.ts";
 
 // ─── Binary discovery ────────────────────────────────────────────────────────
 
@@ -39,15 +39,7 @@ function resolveDevinBin(): string {
   const envBin = process.env.CLI_DEVIN_BIN?.trim();
   if (envBin) return envBin;
 
-  // 2. Common name (PATH lookup handled by spawn shell option)
-  const isWin = process.platform === "win32";
-
   // 3. Windows installer default: %LOCALAPPDATA%\devin\cli\bin\devin.exe
-  if (isWin) {
-    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
-    const winPath = path.join(localAppData, "devin", "cli", "bin", "devin.exe");
-    if (fs.existsSync(winPath)) return winPath;
-  }
 
   // 4. Linux/macOS installer paths
   const home = os.homedir();
@@ -59,7 +51,7 @@ function resolveDevinBin(): string {
   }
 
   // Fallback — rely on PATH
-  return isWin ? "devin.exe" : "devin";
+  return "devin";
 }
 
 // ─── ACP JSON-RPC helpers ────────────────────────────────────────────────────
@@ -156,9 +148,9 @@ export class DevinCliExecutor extends BaseExecutor {
         const child = spawn(devinBin, ["acp", "--agent-type", "summarizer"], {
           env,
           stdio: ["pipe", "pipe", "pipe"],
-          windowsHide: true,
+
           // On Windows, devin.exe may need shell resolution
-          shell: process.platform === "win32",
+          shell: false,
         });
 
         let spawnError: Error | null = null;

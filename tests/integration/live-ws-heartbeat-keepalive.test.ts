@@ -89,7 +89,7 @@ test(
 
     const child = spawn(process.execPath, ["scripts/start-ws-server.mjs"], {
       cwd: process.cwd(),
-      detached: process.platform !== "win32",
+      detached: true,
       env: {
         ...process.env,
         NODE_ENV: "test",

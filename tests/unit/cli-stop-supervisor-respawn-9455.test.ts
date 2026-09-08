@@ -1,8 +1,8 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 
 // Repro for #9455: omniroute stop reports success but supervisor respawns child.
 //
@@ -150,80 +150,4 @@ test("Defect 1b: pid.mjs SERVICES array must include supervisor so killAllSubpro
     /SERVICES\s*=\s*\[[^\]]*"supervisor"[^\]]*\]/.test(pidSrc),
     'pid.mjs SERVICES array must include "supervisor"'
   );
-});
-
-test("Defect 2: killByPort on win32 must actually kill the port listener via netstat -ano (#9455)", async () => {
-  const FAKE_WIN_PID = 1000789;
-  const kills: Array<{ pid: number; signal: string | number }> = [];
-  const deps = {
-    platform: "win32",
-    execFileAsync: async (cmd: string, args: string[]) => {
-      if (cmd.endsWith("netstat")) {
-        return {
-          stdout: `  TCP    0.0.0.0:20128    0.0.0.0:0    LISTENING    ${FAKE_WIN_PID}\r\n`,
-          stderr: "",
-        };
-      }
-      return { stdout: "", stderr: "" };
-    },
-    processKill: (p: number, sig: string | number) => {
-      kills.push({ pid: p, signal: sig });
-      return true;
-    },
-    isPidRunning: (_p: number) => false, // pretend SIGTERM already killed it
-    sleep: async (_ms: number) => {},
-  };
-
-  const { killByPort } = await import("../../bin/cli/commands/stop.mjs");
-  const freed = await (killByPort as unknown as KillByPortFn)(20128, deps);
-  assert.equal(freed, true, "port must be reported free after killing the listener");
-  assert.ok(
-    kills.some((k) => k.pid === FAKE_WIN_PID),
-    `win32 killByPort must signal the netstat PID ${FAKE_WIN_PID}; got ${JSON.stringify(kills)}`
-  );
-});
-
-test("Defect 2b: killByPort on win32 with no listener returns true and signals nothing (#9455)", async () => {
-  const kills: Array<{ pid: number; signal: string | number }> = [];
-  const deps = {
-    platform: "win32",
-    execFileAsync: async (_cmd: string, _args: string[]) => ({ stdout: "", stderr: "" }),
-    processKill: (p: number, sig: string | number) => {
-      kills.push({ pid: p, signal: sig });
-      return true;
-    },
-    isPidRunning: (_p: number) => false,
-    sleep: async (_ms: number) => {},
-  };
-
-  const { killByPort } = await import("../../bin/cli/commands/stop.mjs");
-  const freed = await (killByPort as unknown as KillByPortFn)(20128, deps);
-  assert.equal(freed, true);
-  assert.equal(kills.length, 0, "no PIDs should be signalled when none are listening");
-});
-
-test("netstat parsing: only LISTENING lines matching the exact port are selected (#9455)", async () => {
-  const stdout = [
-    "  TCP    0.0.0.0:20128    0.0.0.0:0    LISTENING    111",
-    "  TCP    127.0.0.1:20128    0.0.0.0:0    LISTENING    222",
-    "  TCP    0.0.0.0:120128    0.0.0.0:0    LISTENING    333", // different port (prefix)
-    "  TCP    0.0.0.0:20128    0.0.0.0:0    TIME_WAIT    444", // not listening
-  ].join("\r\n");
-  const kills: Array<{ pid: number; signal: string | number }> = [];
-  const deps = {
-    platform: "win32",
-    execFileAsync: async (_cmd: string, _args: string[]) => ({ stdout, stderr: "" }),
-    processKill: (p: number, sig: string | number) => {
-      kills.push({ pid: p, signal: sig });
-      return true;
-    },
-    isPidRunning: (_p: number) => false,
-    sleep: async (_ms: number) => {},
-  };
-
-  const { killByPort } = await import("../../bin/cli/commands/stop.mjs");
-  await (killByPort as unknown as KillByPortFn)(20128, deps);
-  const signalled = kills.map((k) => k.pid).sort();
-  assert.deepEqual(signalled, [111, 222], "only exact-port LISTENING PIDs must be killed");
-  void ORIGINAL_PLATFORM;
 });

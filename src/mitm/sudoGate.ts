@@ -1,4 +1,3 @@
-import os from "os";
 import { isSudoPasswordRequired } from "./dns/dnsConfig.ts";
 import { isRoot } from "./systemCommands.ts";
 
@@ -17,14 +16,7 @@ export function resolveMitmSudoPassword(
   return normalizeMitmSudoPasswordInput(cachedPassword);
 }
 
-/**
- * Whether a privileged MITM operation must reject because no sudo password is
- * available. Mirrors the gate in `/api/cli-tools/antigravity-mitm` (#822) and
- * `/api/settings/mitm` — skip on Windows, root, NOPASSWD sudoers, and hosts
- * without sudo on PATH.
- */
 export function isMitmSudoPasswordRequired(sudoPassword: string): boolean {
-  if (os.platform() === "win32") return false;
   if (isRoot()) return false;
   if (normalizeMitmSudoPasswordInput(sudoPassword)) return false;
   return isSudoPasswordRequired();

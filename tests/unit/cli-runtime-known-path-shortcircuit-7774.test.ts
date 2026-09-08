@@ -1,8 +1,8 @@
-import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { after, before, describe, it } from "node:test";
 
 // HOME must be overridden BEFORE importing cliRuntime.ts — the module computes
 // EXPECTED_PARENT_PATHS (the known-path realpath containment check) once at
@@ -30,7 +30,7 @@ const { getCliRuntimeStatus, getKnownToolPaths } =
 
 function makeExecutable(filePath: string, content: string) {
   fs.writeFileSync(filePath, content);
-  if (process.platform !== "win32") fs.chmodSync(filePath, 0o755);
+  fs.chmodSync(filePath, 0o755);
 }
 
 describe("#7774 — known-path short-circuit hides a genuinely runnable Claude binary", () => {

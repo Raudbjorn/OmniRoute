@@ -3,7 +3,6 @@ import { EventEmitter } from "node:events";
 import test from "node:test";
 
 import {
-  buildTrayLaunch,
   buildTrayWorkerArgs,
   createTrayReadinessServer,
   notifyTrayReady,
@@ -39,49 +38,6 @@ test("buildTrayWorkerArgs creates a non-recursive hidden tray worker command", (
     "--tls-key",
     "/tmp/key.pem",
   ]);
-});
-
-test("buildTrayLaunch detaches Windows and Linux workers from the terminal", () => {
-  for (const platform of ["linux", "win32"]) {
-    const launch = buildTrayLaunch({
-      platform,
-      execPath: "/usr/bin/node",
-      cliPath: "/opt/omniroute/bin/omniroute.mjs",
-      workerArgs: ["serve", "--tray-worker"],
-      label: "com.omniroute.tray.123",
-    });
-
-    assert.equal(launch.command, "/usr/bin/node");
-    assert.deepEqual(launch.args, ["/opt/omniroute/bin/omniroute.mjs", "serve", "--tray-worker"]);
-    assert.deepEqual(launch.options, {
-      detached: true,
-      stdio: "ignore",
-      windowsHide: true,
-    });
-  }
-});
-
-test("buildTrayLaunch submits a macOS launchd job", () => {
-  const launch = buildTrayLaunch({
-    platform: "darwin",
-    execPath: "/usr/bin/node",
-    cliPath: "/opt/omniroute/bin/omniroute.mjs",
-    workerArgs: ["serve", "--tray-worker"],
-    label: "com.omniroute.tray.123",
-  });
-
-  assert.equal(launch.command, "launchctl");
-  assert.deepEqual(launch.args, [
-    "submit",
-    "-l",
-    "com.omniroute.tray.123",
-    "--",
-    "/usr/bin/node",
-    "/opt/omniroute/bin/omniroute.mjs",
-    "serve",
-    "--tray-worker",
-  ]);
-  assert.deepEqual(launch.options, { stdio: "ignore" });
 });
 
 test("validateTrayOptions rejects modes that cannot detach safely", () => {
@@ -148,7 +104,7 @@ test("startDetachedTray waits for worker readiness and detaches it", async () =>
         const port = Number(args[args.indexOf("--tray-ready-port") + 1]);
         const token = args[args.indexOf("--tray-ready-token") + 1];
         void notifyTrayReady(port, token);
-        assert.deepEqual(options, { detached: true, stdio: "ignore", windowsHide: true });
+        assert.deepEqual(options, { detached: true, stdio: "ignore" });
         return child;
       },
     }

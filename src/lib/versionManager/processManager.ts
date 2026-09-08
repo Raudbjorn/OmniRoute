@@ -1,31 +1,21 @@
-import { spawn, type ChildProcess } from "child_process";
+import { getVersionManagerTool, setToolStatus } from "@/lib/db/versionManager";
+import { spawn } from "child_process";
 import fs from "fs/promises";
-import fsSync from "fs";
-import path from "path";
 import os from "os";
-import { setToolStatus, getVersionManagerTool } from "@/lib/db/versionManager";
+import path from "path";
 
 const DEFAULT_PORT = 8317;
 const GRACEFUL_TIMEOUT_MS = 5000;
 
-/**
- * Builds the `spawn()` options for the cliproxyapi child process.
- * `windowsHide: true` suppresses the transient conhost.exe/cmd console
- * window Windows briefly flashes open for spawned child processes (#8131).
- * Exported (rather than inlined) so a unit test can assert on it directly
- * instead of mocking `node:child_process`.
- */
 export function buildCliproxyapiSpawnOptions(): {
   detached: boolean;
   stdio: ["ignore", "pipe", "pipe"];
   env: NodeJS.ProcessEnv;
-  windowsHide: boolean;
 } {
   return {
     detached: false,
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env },
-    windowsHide: true,
   };
 }
 
@@ -152,10 +142,6 @@ export async function getProcessInfo(pid: number): Promise<{
   }
 
   try {
-    // #11236: single runtime os.platform() read for the per-OS memory probes —
-    // a process.platform literal is constant-folded to the build machine's
-    // platform in the published artifact (same fold class as b43a212680 /
-    // #10244/#10293), so the darwin probe branch would be pruned on macOS.
     const platform = os.platform();
     if (platform === "linux" || platform === "android") {
       const statusFile = `/proc/${pid}/status`;
@@ -164,17 +150,7 @@ export async function getProcessInfo(pid: number): Promise<{
       if (match) {
         return { pid, alive: true, memoryUsage: parseInt(match[1], 10) * 1024 };
       }
-    } else if (platform === "darwin") {
-      const { execFile } = await import("child_process");
-      const { promisify } = await import("util");
-      const execFileAsync = promisify(execFile);
-      const { stdout } = await execFileAsync("ps", ["-o", "rss=", "-p", String(pid)]);
-      const rssKb = parseInt(stdout.trim(), 10);
-      if (!isNaN(rssKb)) {
-        return { pid, alive: true, memoryUsage: rssKb * 1024 };
-      }
-    }
-    return { pid, alive: true };
+    } else return { pid, alive: true };
   } catch {
     return { pid, alive: true };
   }

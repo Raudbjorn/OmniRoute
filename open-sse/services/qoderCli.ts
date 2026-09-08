@@ -1,9 +1,9 @@
+import { getLookupEnv } from "@/shared/services/cliRuntime";
 import { spawn } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { getLookupEnv } from "@/shared/services/cliRuntime";
 import { qoderProvider } from "../config/providers/registry/qoder/index.ts";
 import { buildQoderCliNotFoundHint, resolveQoderCliInvocation } from "./qoderCliResolve";
 export { getQoderCliCommand } from "./qoderCliResolve"; // #6263 public entry point
@@ -139,7 +139,7 @@ async function spawnQoderCli(options: SpawnQoderCliOptions): Promise<QoderCliRun
         env,
         cwd: options.cwd || undefined,
         stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
+
         ...(useShell ? { shell: true } : {}),
       });
     } catch (err) {
