@@ -1,6 +1,6 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import test from "node:test";
 
 // #11335 — `omniroute update` printed "Could not check latest version. Is npm
 // available?" on Windows while `npm view omniroute version` worked in the same
@@ -13,32 +13,23 @@ import fs from "node:fs";
 // helper, so `bin/cli/npm-exec.mjs` states the same rule for the CLI entry points.
 const { npmBin, npmExecOptions } = await import("../../bin/cli/npm-exec.mjs");
 
-test("#11335 win32 resolves npm.cmd and runs it through a shell", () => {
-  assert.equal(npmBin("win32"), "npm.cmd", "win32 must name the .cmd wrapper explicitly");
-
-  const win = npmExecOptions("win32", { timeoutMs: 15000 });
-  assert.equal(win.shell, true, "win32 must enable the shell so npm.cmd can be spawned");
-  assert.equal(win.windowsHide, true);
-  assert.equal(win.timeout, 15000);
-});
-
 test("#11335 non-win32 keeps the shell off", () => {
-  assert.equal(npmBin("linux"), "npm");
-  assert.equal(npmBin("darwin"), "npm");
+  assert.equal(npmBin(), "npm");
+  assert.equal(npmBin(), "npm");
 
-  for (const platform of ["linux", "darwin"] as const) {
-    const opts = npmExecOptions(platform, { timeoutMs: 15000 });
+  for (const platform of ["linux"] as const) {
+    const opts = npmExecOptions({ timeoutMs: 15000 });
     assert.equal(opts.shell, false, `${platform} must not enable the shell`);
     assert.equal(opts.timeout, 15000);
   }
 });
 
 test("#11335 options carry only what the caller asked for", () => {
-  const bare = npmExecOptions("linux");
+  const bare = npmExecOptions();
   assert.equal("timeout" in bare, false, "an unset timeout must not become undefined");
   assert.equal("stdio" in bare, false);
 
-  const inherited = npmExecOptions("linux", { stdio: "inherit" });
+  const inherited = npmExecOptions({ stdio: "inherit" });
   assert.equal(inherited.stdio, "inherit");
 });
 

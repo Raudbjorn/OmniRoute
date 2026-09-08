@@ -1,7 +1,28 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import {
+  ANTHROPIC_COMPATIBLE_PREFIX,
+  APIKEY_PROVIDERS,
+  CLAUDE_CODE_COMPATIBLE_PREFIX,
+  NOAUTH_PROVIDERS,
+  OAUTH_PROVIDERS,
+  OPENAI_COMPATIBLE_PREFIX,
+} from "@/shared/constants/providers";
+import {
+  SIDEBAR_SECTIONS,
+  getSectionItems,
+  type HideableSidebarItemId,
+  type SidebarItemDefinition,
+} from "@/shared/constants/sidebarVisibility";
+import { useIsElectron } from "@/shared/hooks/useElectron";
+import { useTranslations } from "next-intl";
 import { usePathname, useRouter } from "next/navigation";
+import { useSyncExternalStore } from "react";
+import DegradationBadge from "./DegradationBadge";
+import LanguageSelector from "./LanguageSelector";
+import ProviderIcon from "./ProviderIcon";
+import ThemeToggle from "./ThemeToggle";
+import TokenHealthBadge from "./TokenHealthBadge";
 
 const subscribePlatform = () => () => {};
 const getPlatformIsMac = () => {
@@ -10,27 +31,6 @@ const getPlatformIsMac = () => {
   return /Mac|iPhone|iPad|iPod/.test(platform);
 };
 const getPlatformIsMacServer = () => false;
-import ThemeToggle from "./ThemeToggle";
-import TokenHealthBadge from "./TokenHealthBadge";
-import DegradationBadge from "./DegradationBadge";
-import LanguageSelector from "./LanguageSelector";
-import ProviderIcon from "./ProviderIcon";
-import { useTranslations } from "next-intl";
-import {
-  OAUTH_PROVIDERS,
-  APIKEY_PROVIDERS,
-  NOAUTH_PROVIDERS,
-  CLAUDE_CODE_COMPATIBLE_PREFIX,
-  OPENAI_COMPATIBLE_PREFIX,
-  ANTHROPIC_COMPATIBLE_PREFIX,
-} from "@/shared/constants/providers";
-import {
-  SIDEBAR_SECTIONS,
-  getSectionItems,
-  type SidebarItemDefinition,
-  type HideableSidebarItemId,
-} from "@/shared/constants/sidebarVisibility";
-import { useIsElectron } from "@/shared/hooks/useElectron";
 
 const isE2EMode = process.env.NEXT_PUBLIC_OMNIROUTE_E2E_MODE === "1";
 
@@ -186,10 +186,6 @@ export default function Header({
   const isElectron = useIsElectron();
   const t = useTranslations("header");
   const { title, description, icon, providerId } = usePageInfo(pathname);
-  const isMacElectron =
-    isElectron &&
-    typeof window !== "undefined" &&
-    (window as any).electronAPI?.platform === "darwin";
 
   const handleLogout = async () => {
     try {
@@ -204,12 +200,7 @@ export default function Header({
   };
 
   return (
-    <header
-      className="sticky top-0 z-10 flex items-center justify-between border-b border-black/5 bg-bg px-8 py-4 dark:border-white/5"
-      style={{
-        paddingTop: isMacElectron ? "calc(1rem + var(--desktop-safe-top))" : undefined,
-      }}
-    >
+    <header className="sticky top-0 z-10 flex items-center justify-between border-b border-black/5 bg-bg px-8 py-4 dark:border-white/5">
       {/* Mobile menu button */}
       <div className="flex items-center gap-3 lg:hidden">
         {showMenuButton && (

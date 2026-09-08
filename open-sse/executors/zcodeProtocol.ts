@@ -213,7 +213,6 @@ export class ZcodeAppServerClient implements ZcodeClientLike {
         env: this.env ? { ...process.env, ...this.env } : process.env,
         stdio: ["pipe", "pipe", "pipe"],
         shell: false,
-        windowsHide: true,
       });
     } catch (error) {
       throw error instanceof Error ? error : new Error(String(error));
@@ -260,7 +259,11 @@ export class ZcodeAppServerClient implements ZcodeClientLike {
     });
 
     try {
-      await this.withTimeout(readyPromise, this.startupTimeoutMs, "ZCode app-server handshake timed out");
+      await this.withTimeout(
+        readyPromise,
+        this.startupTimeoutMs,
+        "ZCode app-server handshake timed out"
+      );
       this.ready = true;
     } catch (error) {
       await this.disposeChild(child);
@@ -279,9 +282,10 @@ export class ZcodeAppServerClient implements ZcodeClientLike {
     this.pendingChunks.push(chunk);
     let total = 0;
     for (const part of this.pendingChunks) total += part.byteLength;
-    const buffer = total === chunk.byteLength && this.pendingChunks.length > 0
-      ? chunk
-      : Buffer.concat(this.pendingChunks);
+    const buffer =
+      total === chunk.byteLength && this.pendingChunks.length > 0
+        ? chunk
+        : Buffer.concat(this.pendingChunks);
     this.pendingChunks = [buffer];
 
     if (!this.handshakeDone) {
@@ -307,11 +311,13 @@ export class ZcodeAppServerClient implements ZcodeClientLike {
       }
       const child = this.child;
       if (!child) return;
-      child.stdin.write(`${JSON.stringify({
-        type: "zcode-hello-ack",
-        version: "omniroute",
-        clientId: `omniroute-${process.pid}`,
-      })}\n`);
+      child.stdin.write(
+        `${JSON.stringify({
+          type: "zcode-hello-ack",
+          version: "omniroute",
+          clientId: `omniroute-${process.pid}`,
+        })}\n`
+      );
       this.handshakeDone = true;
     }
     this.consumeFrames();
@@ -366,10 +372,12 @@ export class ZcodeAppServerClient implements ZcodeClientLike {
     if (type === RESPONSE_MESSAGE) {
       request.resolve(payload);
     } else {
-      request.reject(errorFromPayload(
-        payload,
-        type === ERROR_MESSAGE ? "ZCode RPC request failed" : "ZCode RPC request canceled"
-      ));
+      request.reject(
+        errorFromPayload(
+          payload,
+          type === ERROR_MESSAGE ? "ZCode RPC request failed" : "ZCode RPC request canceled"
+        )
+      );
     }
   }
 
@@ -437,7 +445,11 @@ export class ZcodeAppServerClient implements ZcodeClientLike {
     }
   }
 
-  private async withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  private async withTimeout<T>(
+    promise: Promise<T>,
+    timeoutMs: number,
+    message: string
+  ): Promise<T> {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       return await Promise.race([

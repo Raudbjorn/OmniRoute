@@ -1,35 +1,10 @@
-/**
- * AuggieExecutor — routes completions through the local Augment CLI ("auggie")
- * binary via a one-shot stdin/stdout text pipe (no JSON-RPC / ACP protocol).
- *
- * Flow:
- *   1. Flatten the OpenAI-shaped `messages[]` into a single prompt string.
- *   2. Spawn `auggie --print --quiet --model <model>` and pipe the prompt on stdin.
- *   3. Relay stdout chunks as OpenAI-compatible SSE deltas (stream=true) or
- *      buffer them into a single chat.completion JSON body (stream=false).
- *   4. Kill the subprocess on abort / stream close.
- *
- * Authentication:
- *   None. Auggie delegates auth entirely to the user's local `auggie login`
- *   session — OmniRoute never sees or stores credentials for this provider.
- *   The connection is registered `noAuth: true` and `refreshCredentials()` is
- *   a no-op (nothing to refresh).
- *
- * Binary discovery:
- *   1. AUGGIE_BIN / CLI_AUGGIE_BIN env var (absolute path override)
- *   2. PATH lookup ("auggie" / "auggie.cmd")
- *   3. %LOCALAPPDATA%\auggie\bin\auggie.exe  (Windows installer)
- *   4. ~/.local/share/auggie/bin/auggie      (Linux installer)
- *   5. ~/.auggie/bin/auggie                  (alternate installer layout)
- */
-
 import { spawn } from "node:child_process";
-import path from "node:path";
-import os from "node:os";
 import fs from "node:fs";
-import { BaseExecutor, type ExecuteInput, type ProviderCredentials } from "./base.ts";
-import { buildErrorBody, errorResponse, sanitizeErrorMessage } from "../utils/error.ts";
+import os from "node:os";
+import path from "node:path";
 import { auggieProvider } from "../config/providers/registry/auggie/index.ts";
+import { buildErrorBody, errorResponse, sanitizeErrorMessage } from "../utils/error.ts";
+import { BaseExecutor, type ExecuteInput, type ProviderCredentials } from "./base.ts";
 
 const AUGGIE_URL = "auggie://cli/stdio";
 
@@ -96,7 +71,6 @@ export async function initAuggieModels(
     env: process.env,
     stdio: ["ignore", "pipe", "pipe"],
     shell: false,
-    windowsHide: true,
   });
   const fragments: string[] = [];
   child.stdout.on("data", (d: Buffer) => fragments.push(d.toString("utf8")));
@@ -204,20 +178,6 @@ function buildAuggieArgs(model: string): string[] {
   return ["--print", "--quiet", "--model", model, "--"];
 }
 
-/**
- * Spawn options shared by both auggie spawn sites.
- *
- * `shell: true` is required on win32: since Node's CVE-2024-27980 fix
- * (Node >=18.20.2/20.12.2/21.7.3), `spawn()` refuses to launch `.cmd`/`.bat`
- * targets (e.g. the global-npm `auggie.cmd` shim resolved by
- * resolveAuggieBin()'s PATH fallback) without shell interpretation, throwing
- * `spawn EINVAL`. The argv array (built by buildAuggieArgs()) is always a
- * fixed literal list plus an allowlist-validated `model` — never
- * interpolated into a shell string — so enabling `shell` here does not
- * reopen argument-injection: Node still passes argv as discrete array
- * elements to the shell, it does not concatenate them into a single
- * command line.
- */
 export function buildAuggieSpawnOptions(stdio: ["pipe", "pipe", "pipe"]): {
   env: NodeJS.ProcessEnv;
   stdio: ["pipe", "pipe", "pipe"];
@@ -226,7 +186,7 @@ export function buildAuggieSpawnOptions(stdio: ["pipe", "pipe", "pipe"]): {
   return {
     env: process.env,
     stdio,
-    shell: process.platform === "win32",
+    shell: false,
   };
 }
 
@@ -237,16 +197,6 @@ export function resolveAuggieBin(): string {
   const envBin = (process.env.AUGGIE_BIN || process.env.CLI_AUGGIE_BIN || "").trim();
   if (envBin) return envBin;
 
-  const isWin = process.platform === "win32";
-
-  // 2. Windows installer default: %LOCALAPPDATA%\auggie\bin\auggie.exe
-  if (isWin) {
-    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
-    const winPath = path.join(localAppData, "auggie", "bin", "auggie.exe");
-    if (fs.existsSync(winPath)) return winPath;
-  }
-
-  // 3. Linux/macOS installer paths
   const home = os.homedir();
   for (const candidate of [
     path.join(home, ".local", "share", "auggie", "bin", "auggie"),
@@ -256,7 +206,7 @@ export function resolveAuggieBin(): string {
   }
 
   // Fallback — rely on PATH
-  return isWin ? "auggie.cmd" : "auggie";
+  return "auggie";
 }
 
 // ─── Multi-turn message → single prompt builder ───────────────────────────────
@@ -423,10 +373,6 @@ export class AuggieExecutor extends BaseExecutor {
   }
 
   private spawnAuggie(auggieBin: string, model: string, promptText: string) {
-    // `shell: true` on win32 only (see buildAuggieSpawnOptions() for why) — argv
-    // stays a fixed literal array; `model` is already allowlist-validated by
-    // resolveAuggieModel() before reaching here, so no argument-injection surface
-    // is reopened by shell interpretation.
     const child = spawn(
       auggieBin,
       buildAuggieArgs(model),
@@ -526,9 +472,6 @@ export class AuggieExecutor extends BaseExecutor {
 
         let child: ReturnType<typeof spawn>;
         try {
-          // `shell: true` on win32 only (see buildAuggieSpawnOptions() for why).
-          // `model` is already allowlist-validated upstream, so shell interpretation
-          // does not reopen argument-injection.
           child = spawn(
             auggieBin,
             buildAuggieArgs(model),

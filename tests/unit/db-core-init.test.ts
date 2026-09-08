@@ -8,13 +8,13 @@
 // limitation, not a defect in the code under test: the OmniRoute runtime itself
 // cascades to node:sqlite/sql.js when better-sqlite3 is unavailable. See
 // tests/unit/_helpers/betterSqlite3Availability.ts for a guard helper.
-import test from "node:test";
+import Database from "better-sqlite3";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 import { pathToFileURL } from "node:url";
-import Database from "better-sqlite3";
 
 const serial = { concurrency: false };
 const originalEnv = {
@@ -488,10 +488,7 @@ test(
         },
         async () => {
           const core = await importFresh("src/lib/db/core.ts");
-          const expectedDir =
-            process.platform === "win32"
-              ? path.join(fakeHome, "AppData", "Roaming", "omniroute")
-              : path.join(fakeHome, ".omniroute");
+          const expectedDir = path.join(fakeHome, ".omniroute");
 
           assert.equal(core.DATA_DIR, expectedDir);
           assert.equal(core.SQLITE_FILE, path.join(expectedDir, "storage.sqlite"));

@@ -1,12 +1,12 @@
-import { printHeading, printInfo, printSuccess, printError, printWarning } from "../io.mjs";
+import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { t } from "../i18n.mjs";
+import { printError, printHeading, printInfo, printSuccess, printWarning } from "../io.mjs";
 import { npmBin, npmExecOptions } from "../npm-exec.mjs";
-import { readPidFile, isPidRunning } from "../utils/pid.mjs";
+import { isPidRunning, readPidFile } from "../utils/pid.mjs";
 
 const execFileAsync = promisify(execFile);
 
@@ -33,12 +33,10 @@ export async function getCurrentVersion() {
 // they were already on the latest version (#4376). `execFn` is injectable for tests.
 export async function getLatestVersion(execFn = execFileAsync) {
   try {
-    // argv is all literals, so enabling the shell on win32 cannot splice a
-    // runtime value into the command line (Hard Rule #13).
     const { stdout } = await execFn(
       npmBin(),
       ["view", "omniroute", "version", "--prefer-online"],
-      npmExecOptions(process.platform, { timeoutMs: 15000 })
+      npmExecOptions({ timeoutMs: 15000 })
     );
     return stdout.trim();
   } catch {
@@ -108,9 +106,13 @@ export async function printPostApplyGuidance(latest, deps = { readPidFile, isPid
     printInfo("  Run `omniroute restart` now to apply this update.");
   } else {
     printInfo(`No running OmniRoute server was detected via the CLI's PID file.`);
-    printInfo(`  Start it with \`omniroute serve\` (or restart your existing process) to run ${latest}.`);
+    printInfo(
+      `  Start it with \`omniroute serve\` (or restart your existing process) to run ${latest}.`
+    );
   }
-  printInfo("`omniroute --version` will keep reporting the old version until the process restarts.");
+  printInfo(
+    "`omniroute --version` will keep reporting the old version until the process restarts."
+  );
 }
 
 export function registerUpdate(program) {
@@ -156,7 +158,7 @@ export async function runUpdateCommand(opts = {}) {
       const { stdout } = await execFileAsync(
         npmBin(),
         ["view", "omniroute", "changelog"],
-        npmExecOptions(process.platform, { timeoutMs: 15000 })
+        npmExecOptions({ timeoutMs: 15000 })
       );
       if (stdout.trim()) {
         console.log(stdout.trim());

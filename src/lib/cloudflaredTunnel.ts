@@ -1,12 +1,12 @@
-import { spawn, execFile } from "child_process";
-import { createHash } from "crypto";
-import { promisify } from "util";
-import fs from "fs/promises";
-import fsSync from "fs";
-import path from "path";
-import proxyFetch from "@omniroute/open-sse/utils/proxyFetch.ts";
 import { resolveDataDir } from "@/lib/dataPaths";
 import { getRuntimePorts } from "@/lib/runtime/ports";
+import proxyFetch from "@omniroute/open-sse/utils/proxyFetch.ts";
+import { execFile, spawn } from "child_process";
+import { createHash } from "crypto";
+import fsSync from "fs";
+import fs from "fs/promises";
+import path from "path";
+import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
 
@@ -48,9 +48,6 @@ type CloudflaredRuntimeDirs = {
   cacheDir: string;
   dataDir: string;
   tempDir: string;
-  userProfileDir: string;
-  appDataDir: string;
-  localAppDataDir: string;
 };
 
 type BinaryResolution = {
@@ -97,9 +94,6 @@ export type CloudflaredTunnelStatus = {
 const CLOUDFLARED_SAFE_ENV_KEYS = [
   "PATH",
   "HOME",
-  "USERPROFILE",
-  "APPDATA",
-  "LOCALAPPDATA",
   "PROGRAMDATA",
   "ProgramData",
   "SYSTEMROOT",
@@ -149,7 +143,7 @@ function getTunnelDir() {
 }
 
 function getManagedBinaryPath(platform = process.platform) {
-  return path.join(getTunnelDir(), "bin", platform === "win32" ? "cloudflared.exe" : "cloudflared");
+  return path.join(getTunnelDir(), "bin", "cloudflared");
 }
 
 function getStateFilePath() {
@@ -167,7 +161,6 @@ function getLogFilePath() {
 export function getCloudflaredRuntimeDirs(): CloudflaredRuntimeDirs {
   const runtimeRoot = path.join(getTunnelDir(), "runtime");
   const homeDir = path.join(runtimeRoot, "home");
-  const userProfileDir = path.join(runtimeRoot, "userprofile");
 
   return {
     runtimeRoot,
@@ -176,9 +169,6 @@ export function getCloudflaredRuntimeDirs(): CloudflaredRuntimeDirs {
     cacheDir: path.join(runtimeRoot, "cache"),
     dataDir: path.join(runtimeRoot, "data"),
     tempDir: path.join(runtimeRoot, "tmp"),
-    userProfileDir,
-    appDataDir: path.join(userProfileDir, "AppData", "Roaming"),
-    localAppDataDir: path.join(userProfileDir, "AppData", "Local"),
   };
 }
 
@@ -434,9 +424,6 @@ export function buildCloudflaredChildEnv(
   childEnv.XDG_CONFIG_HOME = runtimeDirs.configDir;
   childEnv.XDG_CACHE_HOME = runtimeDirs.cacheDir;
   childEnv.XDG_DATA_HOME = runtimeDirs.dataDir;
-  childEnv.USERPROFILE = runtimeDirs.userProfileDir;
-  childEnv.APPDATA = runtimeDirs.appDataDir;
-  childEnv.LOCALAPPDATA = runtimeDirs.localAppDataDir;
 
   if (!childEnv.TMPDIR) childEnv.TMPDIR = runtimeDirs.tempDir;
   if (!childEnv.TMP) childEnv.TMP = runtimeDirs.tempDir;
@@ -530,30 +517,6 @@ export function getCloudflaredAssetSpec(
         archive: "none",
       },
     },
-    darwin: {
-      x64: {
-        assetName: "cloudflared-darwin-amd64.tgz",
-        binaryName: "cloudflared",
-        archive: "tgz",
-      },
-      arm64: {
-        assetName: "cloudflared-darwin-arm64.tgz",
-        binaryName: "cloudflared",
-        archive: "tgz",
-      },
-    },
-    win32: {
-      x64: {
-        assetName: "cloudflared-windows-amd64.exe",
-        binaryName: "cloudflared.exe",
-        archive: "none",
-      },
-      arm64: {
-        assetName: "cloudflared-windows-arm64.exe",
-        binaryName: "cloudflared.exe",
-        archive: "none",
-      },
-    },
   };
 
   const spec = matrix[platform]?.[arch];
@@ -632,7 +595,7 @@ async function resolveCloudflaredDownloadSpec(spec: AssetSpec): Promise<Resolved
 }
 
 async function resolvePathCommand(command: string) {
-  const lookupCommand = process.platform === "win32" ? "where" : "which";
+  const lookupCommand = "which";
   const args = [command];
 
   try {
@@ -687,7 +650,7 @@ async function downloadToFile(
 }
 
 async function ensureExecutable(binaryPath: string) {
-  if (process.platform !== "win32") {
+  {
     await fs.chmod(binaryPath, 0o755);
   }
 }
@@ -928,7 +891,6 @@ export async function startCloudflaredTunnel(): Promise<CloudflaredTunnelStatus>
       binary.binaryPath as string,
       getCloudflaredStartArgs(targetUrl, namedTunnel),
       {
-        windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
         env: buildCloudflaredChildEnv(),
       }

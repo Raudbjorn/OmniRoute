@@ -3,8 +3,8 @@
  * POST /api/tools/agent-bridge/cert   — trust (install) the cert
  * LOCAL_ONLY: registered in routeGuard.ts
  */
-import { z } from "zod";
-import { installCertResult, uninstallCert, checkCertInstalled } from "@/mitm/cert/install";
+import { createErrorResponse } from "@/lib/api/errorResponse";
+import { checkCertInstalled, installCertResult, uninstallCert } from "@/mitm/cert/install";
 import { resolveMitmDataDir } from "@/mitm/dataDir";
 import { getCachedPassword, setCachedPassword } from "@/mitm/manager";
 import {
@@ -12,10 +12,10 @@ import {
   normalizeMitmSudoPasswordInput,
   resolveMitmSudoPassword,
 } from "@/mitm/sudoGate";
-import path from "path";
-import fs from "fs";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
-import { createErrorResponse } from "@/lib/api/errorResponse";
+import fs from "fs";
+import path from "path";
+import { z } from "zod";
 
 // Exported for unit testing. Next.js only treats GET/POST/etc. as route
 // handlers; additional named exports are ignored by the App Router.
@@ -64,7 +64,7 @@ export async function POST(request: Request): Promise<Response> {
       const suppliedPassword = parsed.success
         ? normalizeMitmSudoPasswordInput(parsed.data.sudoPassword)
         : "";
-      if (process.platform !== "win32" && suppliedPassword) {
+      if (suppliedPassword) {
         setCachedPassword(suppliedPassword);
       }
       const trusted = await checkCertInstalled(crtPath);
@@ -119,7 +119,7 @@ export async function DELETE(request: Request): Promise<Response> {
     const suppliedPassword = parsed.success
       ? normalizeMitmSudoPasswordInput(parsed.data.sudoPassword)
       : "";
-    if (process.platform !== "win32" && suppliedPassword) {
+    if (suppliedPassword) {
       setCachedPassword(suppliedPassword);
     }
     const trusted = await checkCertInstalled(crtPath);

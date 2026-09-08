@@ -23,9 +23,9 @@
  * records packs whose members were actually staged.
  */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import {
   OPTIONAL_PACKS,
   PACK_INDEX_FILENAME,
@@ -90,12 +90,8 @@ function moveTree(src, dest) {
 }
 
 export function tarPack(packOutDir, tarballPath) {
-  // bsdtar ships with macOS, Linux images, and Windows runners (System32\tar.exe).
-  // GNU tar (common in Git-for-Windows environments) treats `C:\...` in `-f` as a
-  // remote rsh target ("Cannot connect to C:"), so always pass a bare filename
-  // and point cwd at the tarball directory instead.
   const result = spawnSync(
-    process.platform === "win32" ? "tar.exe" : "tar",
+    "tar",
     ["-czf", path.basename(tarballPath), "-C", packOutDir, "node_modules"],
     { stdio: "pipe", cwd: path.dirname(tarballPath) }
   );

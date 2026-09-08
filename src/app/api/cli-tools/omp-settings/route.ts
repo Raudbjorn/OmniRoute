@@ -1,17 +1,17 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-import path from "path";
-import os from "os";
-import fs from "fs/promises";
-import { load as yamlLoad, dump as yamlDump } from "js-yaml";
+import { requireCliToolsAuth } from "@/lib/api/requireCliToolsAuth";
+import { deleteOmpCredentials, getOmpCredentials, saveOmpCredentials } from "@/lib/db/omp";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { cliAuthOnlyConfigSchema } from "@/shared/validation/schemas/cli";
-import { getOmpCredentials, saveOmpCredentials, deleteOmpCredentials } from "@/lib/db/omp";
-import { requireCliToolsAuth } from "@/lib/api/requireCliToolsAuth";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
+import { exec } from "child_process";
+import fs from "fs/promises";
+import { dump as yamlDump, load as yamlLoad } from "js-yaml";
+import { NextResponse } from "next/server";
+import os from "os";
+import path from "path";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
@@ -22,23 +22,15 @@ const getOmpDbPath = () => path.join(getOmpDir(), "agent.db");
 const getOmpModelsYmlPath = () => path.join(getOmpDir(), "models.yml");
 
 const checkOmpInstalled = async () => {
-  const isWindows = os.platform() === "win32";
   try {
-    const command = isWindows ? "where omp" : "which omp";
-    await execAsync(command, { windowsHide: true });
+    const command = "which omp";
+    await execAsync(command, {});
     return true;
   } catch {
     try {
       await fs.access(getOmpDbPath());
       return true;
     } catch {
-      if (isWindows) {
-        try {
-          const appDataPath = path.join(process.env.LOCALAPPDATA || "", "omp", "omp.exe");
-          await fs.access(appDataPath);
-          return true;
-        } catch {}
-      }
       return false;
     }
   }
@@ -86,10 +78,7 @@ export async function GET(request: Request) {
       configPath: getOmpModelsYmlPath(),
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(error) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(error) } }, { status: 500 });
   }
 }
 
@@ -140,10 +129,7 @@ export async function POST(request: Request) {
       configPath: getOmpModelsYmlPath(),
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(error) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(error) } }, { status: 500 });
   }
 }
 
@@ -172,9 +158,6 @@ export async function DELETE(request: Request) {
       message: "OmniRoute removed from Oh My Pi",
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(error) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(error) } }, { status: 500 });
   }
 }

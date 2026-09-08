@@ -1,9 +1,9 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -98,10 +98,7 @@ test("CLI startup loads later non-conflicting .env files without overriding earl
   const home = path.join(tmp, "home");
   const dataDir = path.join(tmp, "data");
   const cwd = path.join(tmp, "cwd");
-  const appDataDir =
-    process.platform === "win32"
-      ? path.join(tmp, "appdata", "omniroute")
-      : path.join(home, ".omniroute");
+  const appDataDir = path.join(home, ".omniroute");
 
   try {
     fs.mkdirSync(dataDir, { recursive: true });

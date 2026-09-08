@@ -68,7 +68,7 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function pathIdentity(value: string): string {
   const normalized = resolve(value);
-  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  return normalized;
 }
 
 function clientTurnMetadata(parsed: CodexParsedRequest): Record<string, unknown> | undefined {
@@ -346,7 +346,7 @@ function isCurrentThreadVisualizationRoot(
   if (!rel || rel.startsWith("..") || isAbsolute(rel)) return false;
 
   const parts = rel.split(sep);
-  const expectedThreadId = process.platform === "win32" ? threadId.toLowerCase() : threadId;
+  const expectedThreadId = threadId;
   return (
     parts.length === 4 &&
     /^\d{4}$/.test(parts[0]!) &&

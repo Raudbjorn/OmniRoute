@@ -12,11 +12,11 @@
  * temp-directory filesystem.
  */
 
-import { describe, it, beforeEach, after, mock } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { after, beforeEach, describe, it } from "node:test";
 
 const ORIGINAL_DATA_DIR = process.env.DATA_DIR;
 
@@ -60,10 +60,7 @@ describe("resolveSpawnArgs (#6877 — real filesystem)", () => {
     const configPath = path.join(dataDir, "services", "cliproxy", "config.yaml");
 
     assert.deepEqual(result.args, ["--config", configPath]);
-    assert.equal(
-      result.command,
-      path.join(dataDir, "bin", process.platform === "win32" ? "cliproxyapi.exe" : "cliproxyapi")
-    );
+    assert.equal(result.command, path.join(dataDir, "bin", "cliproxyapi"));
     assert.ok(!result.args.includes("-c"), "args must never contain the short -c flag");
   });
   it("injects the management password without persisting it in config.yaml", async () => {
@@ -73,24 +70,6 @@ describe("resolveSpawnArgs (#6877 — real filesystem)", () => {
     assert.equal(result.env.MANAGEMENT_PASSWORD, "management-secret");
     const configPath = path.join(dataDir, "services", "cliproxy", "config.yaml");
     assert.equal(fs.readFileSync(configPath, "utf8").includes("management-secret"), false);
-  });
-
-  it("uses the .exe command name on Windows", async () => {
-    // resolveSpawnArgs reads os.platform() at call time (#11236 — a
-    // process.platform literal is constant-folded away by the Linux build of
-    // the published artifact), so the Windows host is simulated through the
-    // same runtime os.platform() seam binaryManager.test.ts uses for #10244.
-    const platformMock = mock.method(os, "platform", () => "win32");
-
-    try {
-      const { resolveSpawnArgs } =
-        await import("../../../../src/lib/services/installers/cliproxy.ts");
-      const result = resolveSpawnArgs(8317);
-
-      assert.equal(result.command, path.join(dataDir, "bin", "cliproxyapi.exe"));
-    } finally {
-      platformMock.mock.restore();
-    }
   });
 
   it("writes the default config.yaml template when none exists yet", async () => {

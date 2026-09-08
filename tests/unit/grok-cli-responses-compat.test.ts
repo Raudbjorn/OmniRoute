@@ -1,17 +1,17 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 
-import { grok_cliProvider } from "../../open-sse/config/providers/registry/grok-cli/index.ts";
 import {
-  GROK_BUILD_DEFAULT_CONTEXT_WINDOW,
   getGrokBuildClientVersion,
   getGrokBuildUserAgent,
+  GROK_BUILD_DEFAULT_CONTEXT_WINDOW,
   GROK_BUILD_MODELS_URL,
 } from "../../open-sse/config/grokBuild.ts";
 import { getModelTargetFormat } from "../../open-sse/config/providerModels.ts";
-import { PROVIDER_MODELS_CONFIG } from "../../src/app/api/providers/[id]/models/discovery/providerModelsConfig.ts";
+import { grok_cliProvider } from "../../open-sse/config/providers/registry/grok-cli/index.ts";
 import { BaseExecutor } from "../../open-sse/executors/base.ts";
 import { GrokCliExecutor } from "../../open-sse/executors/grok-cli.ts";
+import { PROVIDER_MODELS_CONFIG } from "../../src/app/api/providers/[id]/models/discovery/providerModelsConfig.ts";
 
 test("grok-cli exposes the authenticated grok-build model catalog", () => {
   assert.deepEqual(
@@ -102,11 +102,6 @@ test("grok-cli sends the current grok-build session headers", () => {
   assert.equal(json.Authorization, "Bearer token");
   assert.equal(json.Accept, "application/json");
   assert.equal(json["x-grok-model-override"], "grok-composer-2.5-fast");
-});
-
-test("grok-cli renders the official Windows platform name in its user agent", () => {
-  if (process.platform !== "win32") return;
-  assert.match(getGrokBuildUserAgent(), /\(windows; /);
 });
 
 test("grok-cli inherits BaseExecutor transport instead of buffering its own response", () => {

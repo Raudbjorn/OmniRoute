@@ -30,11 +30,11 @@ const UPDATE = process.argv.includes("--update");
 
 function runTsc() {
   try {
-    return execFileSync(
-      process.platform === "win32" ? "npx.cmd" : "npx",
-      ["tsc", "--pretty", "false", "--noEmit", "-p", TSCONFIG],
-      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, cwd: ROOT }
-    );
+    return execFileSync("npx", ["tsc", "--pretty", "false", "--noEmit", "-p", TSCONFIG], {
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+      cwd: ROOT,
+    });
   } catch (err) {
     if (err.stdout) return String(err.stdout);
     throw err;

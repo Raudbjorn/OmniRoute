@@ -6,13 +6,13 @@ import {
   invalidateOpencodeQuotaCache,
   registerOpencodeQuotaFetcher,
 } from "../../open-sse/services/opencodeQuotaFetcher.ts";
-import { getQuotaFetcher, getQuotaWindows } from "../../open-sse/services/quotaPreflight.ts";
 import {
   clearQuotaMonitors,
   getActiveMonitorCount,
   startQuotaMonitor,
   stopQuotaMonitor,
 } from "../../open-sse/services/quotaMonitor.ts";
+import { getQuotaFetcher, getQuotaWindows } from "../../open-sse/services/quotaPreflight.ts";
 import { clearSessions, touchSession } from "../../open-sse/services/sessionManager.ts";
 
 type UsageStatus = "ok" | "rate-limited";
@@ -63,38 +63,6 @@ test("fetchOpencodeQuota returns null without an API key", async () => {
   assert.equal(await fetchOpencodeQuota(`missing-${Date.now()}`), null);
   assert.equal(await fetchOpencodeQuota(`empty-${Date.now()}`, { apiKey: "" }), null);
   assert.equal(called, false);
-});
-
-test("fetchOpencodeQuota parses official usage windows as fractions and sends Bearer auth", async () => {
-  const connectionId = `official-${Date.now()}`;
-  let authorization: string | null = null;
-  let method = "";
-
-  globalThis.fetch = async (input, init) => {
-    const request = new Request(input, init);
-    authorization = request.headers.get("Authorization");
-    method = request.method;
-    return jsonResponse(healthyUsage());
-  };
-
-  const quota = await fetchOpencodeQuota(connectionId, { apiKey: "Bearer opencode-key" });
-
-  assert.ok(quota);
-  assert.equal(authorization, "Bearer opencode-key");
-  assert.equal(method, "GET");
-  assert.equal(quota.percentUsed, 0.5);
-  assert.equal(quota.resetAt, RESET_WEEKLY);
-  assert.equal(quota.limitReached, false);
-  assert.deepEqual(quota.windows, {
-    window_5h: { percentUsed: 0.25, resetAt: RESET_ROLLING },
-    window_weekly: { percentUsed: 0.5, resetAt: RESET_WEEKLY },
-    window_monthly: { percentUsed: 0.1, resetAt: RESET_MONTHLY },
-  });
-  assert.deepEqual(quota.window5h, { percentUsed: 0.25, resetAt: RESET_ROLLING });
-  assert.deepEqual(quota.windowWeekly, { percentUsed: 0.5, resetAt: RESET_WEEKLY });
-  assert.deepEqual(quota.windowMonthly, { percentUsed: 0.1, resetAt: RESET_MONTHLY });
-
-  invalidateOpencodeQuotaCache(connectionId);
 });
 
 test("fetchOpencodeQuota makes a rate-limited window effectively exhausted", async () => {

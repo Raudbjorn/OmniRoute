@@ -392,8 +392,6 @@ export const CURSOR_CONFIG = {
   // Token storage locations (for user reference)
   tokenStoragePaths: {
     linux: "~/.config/Cursor/User/globalStorage/state.vscdb",
-    macos: "/Users/<user>/Library/Application Support/Cursor/User/globalStorage/state.vscdb",
-    windows: "%APPDATA%\\Cursor\\User\\globalStorage\\state.vscdb",
   },
   // Database keys
   dbKeys: {
@@ -416,8 +414,6 @@ export const TRAE_CONFIG = {
   clientType: "ide",
   tokenStoragePaths: {
     linux: "~/.config/Trae/User/globalStorage/state.vscdb",
-    macos: "/Users/<user>/Library/Application Support/Trae/User/globalStorage/state.vscdb",
-    windows: "%APPDATA%\\Trae\\User\\globalStorage\\state.vscdb",
   },
   // Chat completions path (mirrored from OpenAI-compatible providers)
   chatEndpoint: "/v1/chat/completions",

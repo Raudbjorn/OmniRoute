@@ -7,18 +7,18 @@
  * { serverState, agentStates, bypassPatterns, mappings } while maintaining
  * backward-compat legacy keys { server, agents } for integration tests.
  */
-import { getMitmStatus, getAllAgentsStatus, getCachedPassword } from "@/mitm/manager";
-import { isSudoPasswordRequired, checkDNSEntryForAgent } from "@/mitm/dns/dnsConfig";
-import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import { createErrorResponse } from "@/lib/api/errorResponse";
-import { getAllAgentBridgeStates } from "@/lib/db/agentBridgeState";
 import { getAllBypassPatterns } from "@/lib/db/agentBridgeBypass";
 import { getMappingsForAgent } from "@/lib/db/agentBridgeMappings";
+import { getAllAgentBridgeStates } from "@/lib/db/agentBridgeState";
 import { checkCertInstalled } from "@/mitm/cert/install";
 import { resolveMitmDataDir } from "@/mitm/dataDir";
+import { checkDNSEntryForAgent, isSudoPasswordRequired } from "@/mitm/dns/dnsConfig";
+import { getAllAgentsStatus, getCachedPassword, getMitmStatus } from "@/mitm/manager";
 import { ALL_TARGETS } from "@/mitm/targets/index";
-import path from "path";
+import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
 import fs from "fs";
+import path from "path";
 
 export async function GET(): Promise<Response> {
   try {
@@ -54,9 +54,8 @@ export async function GET(): Promise<Response> {
       agentStates.length > 0 &&
       agentStates.some((s) => s.dns_enabled && checkDNSEntryForAgent(s.agent_id));
 
-    const isWin = process.platform === "win32";
     const hasCachedPassword = !!getCachedPassword();
-    const needsSudoPassword = !isWin && !hasCachedPassword && isSudoPasswordRequired();
+    const needsSudoPassword = !hasCachedPassword && isSudoPasswordRequired();
 
     // Build enriched server state
     const enrichedServer = {
@@ -66,7 +65,6 @@ export async function GET(): Promise<Response> {
       dnsConfigured,
       hasCachedPassword,
       needsSudoPassword,
-      isWin,
     };
 
     return Response.json({

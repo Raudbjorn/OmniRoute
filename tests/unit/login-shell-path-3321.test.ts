@@ -1,12 +1,12 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
+import * as loginShellPath from "../../src/shared/services/loginShellPath.ts";
 import {
   getCachedLoginShellPath,
   getLoginShellPath,
   mergeShellPath,
   parseShellPathOutput,
 } from "../../src/shared/services/loginShellPath.ts";
-import * as loginShellPath from "../../src/shared/services/loginShellPath.ts";
 
 // Regression guards for #3321: macOS GUI/Electron apps don't inherit the login-shell PATH,
 // so Homebrew/nvm/volta CLIs were reported "not installed". We recover the real PATH from
@@ -43,19 +43,6 @@ test("parseShellPathOutput returns null when no PATH line is present", () => {
   assert.equal(parseShellPathOutput(""), null);
 });
 
-test("getLoginShellPath returns null on win32 platform (no-op on Windows)", () => {
-  let called = false;
-  const result = getLoginShellPath({
-    platform: "win32",
-    runShell: () => {
-      called = true;
-      return "PATH=/should/not/be/used";
-    },
-  });
-  assert.equal(result, null);
-  assert.equal(called, false, "must not spawn the shell on win32");
-});
-
 test("getLoginShellPath returns the login-shell PATH on linux", () => {
   const result = getLoginShellPath({
     platform: "linux",
@@ -66,18 +53,6 @@ test("getLoginShellPath returns the login-shell PATH on linux", () => {
     },
   });
   assert.equal(result, "/home/user/.nvm/versions/node/v22.23.1/bin:/usr/local/bin:/usr/bin");
-});
-
-test("getLoginShellPath returns the login-shell PATH on darwin (#3321)", () => {
-  const result = getLoginShellPath({
-    platform: "darwin",
-    shell: "/bin/zsh",
-    runShell: (sh) => {
-      assert.equal(sh, "/bin/zsh");
-      return "PATH=/opt/homebrew/bin:/usr/bin:/Users/x/.volta/bin\n";
-    },
-  });
-  assert.equal(result, "/opt/homebrew/bin:/usr/bin:/Users/x/.volta/bin");
 });
 
 test("getLoginShellPath is fail-safe — returns null if the shell probe throws", () => {

@@ -13,8 +13,8 @@
  * runStreaming() alike.
  */
 
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 
 const { buildAuggieSpawnOptions } = await import("@omniroute/open-sse/executors/auggie");
 
@@ -29,23 +29,10 @@ function withPlatform<T>(platform: string, fn: () => T): T {
   }
 }
 
-test("buildAuggieSpawnOptions sets shell:true on win32 (fixes spawn EINVAL)", () => {
-  const options = withPlatform("win32", () => buildAuggieSpawnOptions(["pipe", "pipe", "pipe"]));
-  assert.equal(
-    options.shell,
-    true,
-    "spawn() must use shell:true on win32 or launching auggie.cmd throws EINVAL " +
-      "(Node CVE-2024-27980 fix)"
-  );
-});
-
 test("buildAuggieSpawnOptions leaves shell falsy on posix platforms", () => {
-  for (const platform of ["linux", "darwin"]) {
+  for (const platform of ["linux"]) {
     const options = withPlatform(platform, () => buildAuggieSpawnOptions(["pipe", "pipe", "pipe"]));
-    assert.ok(
-      !options.shell,
-      `spawn() should not need shell interpretation on ${platform}`
-    );
+    assert.ok(!options.shell, `spawn() should not need shell interpretation on ${platform}`);
   }
 });
 

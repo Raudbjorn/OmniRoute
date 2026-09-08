@@ -50,33 +50,6 @@ test("sanitizeErrorMessage removes non-source paths, credentials, and serialized
   assert.doesNotMatch(safe, /\\n\s*at validate/i);
 });
 
-test("sanitizeErrorMessage redacts Windows drive-root-relative filesystem paths", () => {
-  const plain = sanitizeErrorMessage(
-    String.raw`Provider failed at \Users\admin\private\secret.txt`
-  );
-  const quoted = sanitizeErrorMessage(
-    String.raw`Provider failed opening "\Windows\Temp\native.dll"`
-  );
-  const singleSegment = sanitizeErrorMessage(String.raw`Provider failed opening \private.db`);
-  const prose = sanitizeErrorMessage(String.raw`Provider reported \offline without a path`);
-  const escapedInitialPaths = [
-    String.raw`Provider failed at \bin\private.db`,
-    String.raw`Provider failed at \folder\private.db`,
-    String.raw`Provider failed at \new\private.db`,
-    String.raw`Provider failed at \root\private.db`,
-    String.raw`Provider failed at \temp\private.db`,
-    String.raw`Provider failed at C:\temp\private.db`,
-  ].map((message) => sanitizeErrorMessage(message));
-
-  assert.equal(plain, "Provider failed at <path>");
-  assert.equal(quoted, 'Provider failed opening "<path>"');
-  assert.equal(singleSegment, "Provider failed opening <path>");
-  assert.equal(prose, String.raw`Provider reported \offline without a path`);
-  for (const projected of escapedInitialPaths) {
-    assert.equal(projected, "Provider failed at <path>");
-  }
-});
-
 test("sanitizeErrorMessage redacts extensionless POSIX paths without hiding explicit routes", () => {
   const compact = sanitizeErrorMessage("Provider failed at /custom/internal/secret");
   const spaced = sanitizeErrorMessage("Provider failed at /custom/internal secret directory");

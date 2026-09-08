@@ -98,10 +98,6 @@ function versionFromShim(shimPath: string): string | null {
 }
 
 function defaultVersionsDir(home: string): string {
-  if (process.platform === "win32") {
-    const localAppData = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
-    return join(localAppData, "cursor-agent", "versions");
-  }
   return join(home, ".local", "share", "cursor-agent", "versions");
 }
 
@@ -208,7 +204,7 @@ export function getCursorAgentCliVersion(): string {
     return cachedVersion;
   }
 
-  const home = process.env.HOME || process.env.USERPROFILE || homedir();
+  const home = process.env.HOME || homedir();
   const fromFs = detectCursorAgentCliVersionFromFs(home);
   if (fromFs) {
     cachedVersion = fromFs;

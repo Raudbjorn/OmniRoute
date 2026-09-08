@@ -15,10 +15,10 @@
  * framework coupling. Fail-closed on integrity, fail-open on absence.
  */
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import {
   OPTIONAL_PACKS,
   PACK_INDEX_FILENAME,
@@ -136,11 +136,7 @@ export function resolvePackSource(name, sourceDir, stagingDir) {
 function extractTarball(tarball, stagingDir) {
   fs.rmSync(stagingDir, { recursive: true, force: true });
   fs.mkdirSync(stagingDir, { recursive: true });
-  const result = spawnSync(
-    process.platform === "win32" ? "tar.exe" : "tar",
-    ["-xzf", tarball, "-C", stagingDir],
-    { stdio: "pipe" }
-  );
+  const result = spawnSync("tar", ["-xzf", tarball, "-C", stagingDir], { stdio: "pipe" });
   if (result.status !== 0) {
     throw new Error(`failed to extract ${path.basename(tarball)} (exit ${result.status})`);
   }

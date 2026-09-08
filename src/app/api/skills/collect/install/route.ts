@@ -66,8 +66,7 @@ function inferCategory(skillName: string, description: string): string {
 
 function expandHome(dir: string): string {
   // Home dir resolution: Windows (USERPROFILE) → Unix fallback (HOME)
-  const home =
-    typeof process !== "undefined" ? process.env.USERPROFILE || process.env.HOME || "" : "";
+  const home = typeof process !== "undefined" ? process.env.HOME || "" : "";
   return dir.replace(/^~/, home);
 }
 

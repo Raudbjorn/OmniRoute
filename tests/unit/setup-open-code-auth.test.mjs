@@ -8,36 +8,13 @@
 // Tested through the pure `resolveOpenCodeAuthSpawn(providerId, platform)`
 // resolver (no child_process mocking, no process.platform mutation — both of
 // which required an unavailable --experimental-test-module-mocks flag in CI).
-import { test } from "node:test";
 import assert from "node:assert/strict";
+import { test } from "node:test";
 
 import {
-  resolveOpenCodeAuthSpawn,
   resolveOpenCodeAuthProviderId,
+  resolveOpenCodeAuthSpawn,
 } from "../../bin/cli/commands/setup-open-code.mjs";
-
-test("resolveOpenCodeAuthSpawn: win32 spawns opencode.cmd with shell:true (repro #7913)", () => {
-  const spawn = resolveOpenCodeAuthSpawn("omniroute", "win32");
-  assert.equal(spawn.command, "opencode.cmd");
-  assert.equal(
-    spawn.options.shell,
-    true,
-    `expected shell:true on win32 (the EINVAL fix), got shell:${spawn.options.shell}`
-  );
-  assert.deepEqual(spawn.args, ["auth", "login", "--provider", "opencode-omniroute"]);
-});
-
-test("resolveOpenCodeAuthSpawn: linux/darwin spawn bare opencode with shell:false (no regression)", () => {
-  for (const platform of ["linux", "darwin"]) {
-    const spawn = resolveOpenCodeAuthSpawn("omniroute", platform);
-    assert.equal(spawn.command, "opencode", `command on ${platform}`);
-    assert.equal(
-      spawn.options.shell,
-      false,
-      `expected shell:false on ${platform}, got shell:${spawn.options.shell}`
-    );
-  }
-});
 
 test("resolveOpenCodeAuthSpawn: prefixes provider id for auth login (#8830)", () => {
   const spawn = resolveOpenCodeAuthSpawn("anthropic", "linux");
@@ -56,8 +33,5 @@ test("resolveOpenCodeAuthProviderId: idempotent — passes through already-prefi
     resolveOpenCodeAuthProviderId("opencode-omniroute-preprod"),
     "opencode-omniroute-preprod"
   );
-  assert.equal(
-    resolveOpenCodeAuthProviderId("opencode-anthropic"),
-    "opencode-anthropic"
-  );
+  assert.equal(resolveOpenCodeAuthProviderId("opencode-anthropic"), "opencode-anthropic");
 });

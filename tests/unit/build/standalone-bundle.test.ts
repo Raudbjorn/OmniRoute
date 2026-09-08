@@ -1,9 +1,9 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { createHash } from "node:crypto";
+import test from "node:test";
 
 /**
  * Stage 8 (issue #10321) — shared standalone web bundle.
@@ -53,7 +53,7 @@ const { hydratePlatformNatives, verifyBundledNatives } = hydrateMod as typeof hy
   };
 };
 
-const IS_WINDOWS = process.platform === "win32";
+const IS_WINDOWS = false;
 
 function tmpDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -78,7 +78,7 @@ function buildWebTree(root: string): void {
   fs.chmodSync(bin, 0o755);
   fs.mkdirSync(path.join(root, "static"), { recursive: true });
   fs.writeFileSync(path.join(root, "static", "app.css"), "body{margin:0}\n");
-  if (!IS_WINDOWS) {
+  {
     fs.symlinkSync("../standalone/server.js", path.join(root, "static", "server-link.js"));
   }
 }
@@ -114,7 +114,7 @@ test("pack → restore roundtrip restores the tree byte-for-byte", async () => {
       true,
       `restored tree must verify: ${verdict.ok ? "" : (verdict as { errors: string[] }).errors.join("; ")}`
     );
-    if (!IS_WINDOWS) {
+    {
       assert.equal(
         fs.readlinkSync(path.join(dst, "static", "server-link.js")),
         "../standalone/server.js",
@@ -288,46 +288,5 @@ test("hydratePlatformNatives swaps install-machine-forked packages for this leg"
   } finally {
     fs.rmSync(standalone, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
     fs.rmSync(source, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  }
-});
-
-test("verifyBundledNatives asserts serviceability and honors the onnx darwin-x64 exemption", () => {
-  const root = tmpDir("s8-natives-");
-  try {
-    const nm = path.join(root, "node_modules");
-    writeNative(nm, "better-sqlite3/prebuilds/linux-x64.node", "napi");
-    writeNative(nm, "@wreq-js/binding-linux-x64-gnu/wreq-js.linux-x64-gnu.node", "rust");
-    writeNative(nm, "onnxruntime-node/bin/napi-v6/linux/x64/libonnxruntime.so", "ort");
-
-    const good = verifyBundledNatives({ nodeModulesDir: nm, platform: "linux", arch: "x64" });
-    assert.equal(
-      good.ok,
-      true,
-      `expected serviceable: ${(good as { errors?: string[] }).errors?.join("; ")}`
-    );
-
-    const missingPlatformNatives = verifyBundledNatives({
-      nodeModulesDir: nm,
-      platform: "darwin",
-      arch: "arm64",
-    });
-    assert.equal(missingPlatformNatives.ok, false);
-    assert.ok(
-      (missingPlatformNatives as { errors: string[] }).errors.some((e) => e.startsWith("wreq-js:"))
-    );
-
-    // darwin-x64 has no onnxruntime-node prebuild at all — the exemption must keep it green
-    // as long as the other bundled natives service that triple.
-    const nm2 = path.join(root, "node_modules2");
-    writeNative(nm2, "better-sqlite3/prebuilds/darwin-x64.node", "napi");
-    writeNative(nm2, "@wreq-js/binding-darwin-x64/wreq-js.darwin-x64.node", "rust");
-    const exempted = verifyBundledNatives({ nodeModulesDir: nm2, platform: "darwin", arch: "x64" });
-    assert.equal(
-      exempted.ok,
-      true,
-      `darwin-x64 must pass via exemption: ${(exempted as { errors?: string[] }).errors?.join("; ")}`
-    );
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });

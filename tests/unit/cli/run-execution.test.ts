@@ -1,9 +1,9 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 
 import { runCliTarget } from "../../../bin/cli/commands/run.mjs";
 
@@ -28,11 +28,6 @@ async function withReachableOmniRoute<T>(run: () => Promise<T>): Promise<T> {
 }
 
 test("run executes a generic target with isolated env and propagates its exit code", async (t) => {
-  if (process.platform === "win32") {
-    t.skip("POSIX fake executable; Windows shim behavior is covered by launch tests");
-    return;
-  }
-
   const capture = await mkdtemp(path.join(os.tmpdir(), "omniroute-run-capture-"));
   const capturePath = path.join(capture, "aider.json");
   const fake = await makeFakeCli(
@@ -72,11 +67,6 @@ process.exit(7);`
 });
 
 test("run gives Gemini an isolated GEMINI_CLI_HOME forcing api-key auth and removes it", async (t) => {
-  if (process.platform === "win32") {
-    t.skip("POSIX fake executable; Windows shim behavior is covered by launch tests");
-    return;
-  }
-
   const capture = await mkdtemp(path.join(os.tmpdir(), "omniroute-run-gemini-capture-"));
   const capturePath = path.join(capture, "gemini.json");
   const fake = await makeFakeCli(
@@ -123,11 +113,6 @@ fs.writeFileSync(process.env.CAPTURE_PATH, JSON.stringify({
 });
 
 test("run gives Qwen an isolated temporary home and removes it after exit", async (t) => {
-  if (process.platform === "win32") {
-    t.skip("POSIX fake executable; Windows shim behavior is covered by launch tests");
-    return;
-  }
-
   const capture = await mkdtemp(path.join(os.tmpdir(), "omniroute-run-qwen-capture-"));
   const capturePath = path.join(capture, "qwen.json");
   const fake = await makeFakeCli(

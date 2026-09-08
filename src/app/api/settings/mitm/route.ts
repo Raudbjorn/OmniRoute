@@ -1,15 +1,15 @@
 export const runtime = "nodejs";
 
+import { toPublicSafeTunnelError } from "@/lib/api/publicSafeTunnelError";
+import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
+import { resolveMitmDataDir } from "@/mitm/dataDir";
+import { ANTIGRAVITY_MITM_PROFILE } from "@/mitm/targets/antigravity";
+import { KIRO_MITM_PROFILE } from "@/mitm/targets/kiro";
+import { resolveApiKey } from "@/shared/services/apiKeyResolver";
 import fs from "fs";
+import { NextResponse } from "next/server";
 import path from "path";
 import { z } from "zod";
-import { NextResponse } from "next/server";
-import { requireManagementAuth } from "@/lib/api/requireManagementAuth";
-import { toPublicSafeTunnelError } from "@/lib/api/publicSafeTunnelError";
-import { resolveApiKey } from "@/shared/services/apiKeyResolver";
-import { resolveMitmDataDir } from "@/mitm/dataDir";
-import { KIRO_MITM_PROFILE } from "@/mitm/targets/kiro";
-import { ANTIGRAVITY_MITM_PROFILE } from "@/mitm/targets/antigravity";
 
 type MitmTargetRoute = {
   id: string;
@@ -151,7 +151,7 @@ async function buildMitmResponse() {
   return {
     running: status.running,
     pid: status.pid || null,
-    dnsConfigured: status.dnsConfigured || false,
+    dnsConfigured: status.dnsConfigured,
     certExists: status.certExists || fs.existsSync(getCertPath()),
     hasCachedPassword: !!getCachedPassword(),
     port: config.port,
@@ -214,26 +214,22 @@ export async function PUT(request: Request) {
       const { getCachedPassword, setCachedPassword, startMitm, stopMitm } =
         await import("@/mitm/manager.runtime");
       const { isRoot } = await import("@/mitm/systemCommands");
-      const isWin = process.platform === "win32";
-      const isRootUser = !isWin && isRoot();
+      const isRootUser = isRoot();
       const sudoPassword = parsed.data.sudoPassword || getCachedPassword() || "";
 
       if (parsed.data.enabled) {
         const apiKey = await resolveApiKey(parsed.data.keyId || null, parsed.data.apiKey || null);
-        if (!apiKey || (!isWin && !isRootUser && !sudoPassword)) {
-          return NextResponse.json(
-            { error: isWin ? "Missing apiKey" : "Missing apiKey or sudoPassword" },
-            { status: 400 }
-          );
+        if (!apiKey || (!isRootUser && !sudoPassword)) {
+          return NextResponse.json({ error: "Missing apiKey or sudoPassword" }, { status: 400 });
         }
         await startMitm(apiKey, sudoPassword, { port: config.port });
-        if (!isWin) setCachedPassword(sudoPassword);
+        setCachedPassword(sudoPassword);
       } else {
-        if (!isWin && !isRootUser && !sudoPassword) {
+        if (!isRootUser && !sudoPassword) {
           return NextResponse.json({ error: "Missing sudoPassword" }, { status: 400 });
         }
         await stopMitm(sudoPassword);
-        if (!isWin && parsed.data.sudoPassword) setCachedPassword(parsed.data.sudoPassword);
+        if (parsed.data.sudoPassword) setCachedPassword(parsed.data.sudoPassword);
       }
     }
 

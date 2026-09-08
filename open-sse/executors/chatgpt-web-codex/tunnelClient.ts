@@ -65,14 +65,7 @@ export function tunnelClientInstallAction(installedVersion: string): "reuse" | "
 }
 
 export function tunnelPlatformAsset(platform = process.platform, arch = process.arch): string {
-  const os =
-    platform === "darwin"
-      ? "darwin"
-      : platform === "linux"
-        ? "linux"
-        : platform === "win32"
-          ? "windows"
-          : null;
+  const os = platform === "linux" ? "linux" : null;
   const cpu = arch === "arm64" ? "arm64" : arch === "x64" ? "amd64" : null;
   if (!os || !cpu) {
     throw new Error(`openai/tunnel-client has no pinned build for ${platform}/${arch}`);
@@ -110,7 +103,7 @@ export function tunnelClientPaths() {
   const root = join(getConfigDir(), "tunnel-client");
   return {
     root,
-    binary: join(root, process.platform === "win32" ? "tunnel-client.exe" : "tunnel-client"),
+    binary: join(root, "tunnel-client"),
     manifest: join(root, "manifest.json"),
     profileDir: join(root, "profiles"),
     supervisorLease: join(root, "supervisor-lease.json"),
@@ -255,7 +248,7 @@ function restoreTunnelInstallation(
 ): void {
   if (!previousInstallation) return;
   atomicWriteFile(paths.binary, previousInstallation.binary);
-  if (process.platform !== "win32") chmodSync(paths.binary, 0o700);
+  chmodSync(paths.binary, 0o700);
   atomicWriteFile(paths.manifest, previousInstallation.manifestText);
 }
 
@@ -275,13 +268,13 @@ export async function ensureTunnelClientInstalled(): Promise<string> {
   if (archiveSha256 !== expected) throw new Error(`Checksum mismatch for ${asset}`);
 
   const files = unzipSync(archive);
-  const executableName = process.platform === "win32" ? "tunnel-client.exe" : "tunnel-client";
+  const executableName = "tunnel-client";
   const entry = Object.entries(files).find(([name]) => basename(name) === executableName);
   if (!entry) throw new Error(`${asset} does not contain ${executableName}`);
   const stagedBinary = `${paths.binary}.install-${process.pid}-${randomUUID()}`;
   atomicWriteFile(stagedBinary, entry[1]);
   try {
-    if (process.platform !== "win32") chmodSync(stagedBinary, 0o700);
+    chmodSync(stagedBinary, 0o700);
     requireReportedTunnelVersion(
       stagedBinary,
       CHATGPT_WEB_CODEX_TUNNEL_VERSION,
@@ -299,7 +292,7 @@ export async function ensureTunnelClientInstalled(): Promise<string> {
   };
   try {
     atomicWriteFile(paths.binary, entry[1]);
-    if (process.platform !== "win32") chmodSync(paths.binary, 0o700);
+    chmodSync(paths.binary, 0o700);
     atomicWriteFile(paths.manifest, `${JSON.stringify(manifest, null, 2)}\n`);
   } catch (error) {
     restoreTunnelInstallation(paths, previousInstallation);

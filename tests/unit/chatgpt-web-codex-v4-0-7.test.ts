@@ -11,7 +11,6 @@ import {
   CHATGPT_TURN_REVISION_CONFLICT_MESSAGE,
   extractChatGptTurnUserRevision,
 } from "../../open-sse/vendor/codex-chatgpt-web/adapters/chatgpt-web/environment.ts";
-import { TurnBroker } from "../../open-sse/vendor/codex-chatgpt-web/adapters/chatgpt-web/turn-broker.ts";
 import type { CodexParsedRequest } from "../../open-sse/vendor/codex-chatgpt-web/types.ts";
 import { VERSION } from "../../open-sse/vendor/codex-chatgpt-web/version.ts";
 
@@ -176,16 +175,4 @@ test("an interrupted prior turn notice is not treated as the next instruction", 
     () => extractChatGptTurnUserRevision(request),
     new RegExp(CHATGPT_TURN_REVISION_CONFLICT_MESSAGE)
   );
-});
-
-test("macOS-sized Unix socket paths fail with an explicit broker error", async () => {
-  if (process.platform === "win32") return;
-  const socketPath = `/tmp/${"x".repeat(99)}`;
-  assert.equal(Buffer.byteLength(socketPath), 104);
-  const broker = TurnBroker.forSocket(socketPath);
-  try {
-    await assert.rejects(broker.listen(), /103-byte limit/);
-  } finally {
-    await broker.close();
-  }
 });

@@ -1,8 +1,8 @@
-import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
-import { join, sep } from "node:path";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { join, sep } from "node:path";
+import test from "node:test";
 
 import {
   isNativeExecutable,
@@ -11,22 +11,7 @@ import {
   runBuildTool,
 } from "../../../scripts/build/buildToolRunner.mjs";
 
-/**
- * Regression coverage for the Windows `postbuild` crash.
- *
- * `colocate-standalone.mjs` spawned `node_modules/.bin/esbuild` — an
- * extensionless POSIX shell script that does not exist on Windows. `npm run
- * build` therefore died with
- *
- *   Error: spawnSync C:\…\node_modules\.bin\esbuild ENOENT
- *
- * immediately AFTER `next build` reported "✓ Compiled successfully", leaving a
- * complete `.build/next/standalone` tree next to a failed build.
- *
- * The platform is injected into `planBuildToolSpawn()` (same seam as
- * `resolveNextBuildEnv()` in build-next-isolated.mjs) so the Windows decisions
- * are asserted from CI's Linux runners.
- */
+// Build tools run directly without shell argument rewriting.
 
 test("planBuildToolSpawn prefers the tool's own JS entry over any .bin shim", () => {
   const plan = planBuildToolSpawn({
@@ -34,7 +19,6 @@ test("planBuildToolSpawn prefers the tool's own JS entry over any .bin shim", ()
     args: ["in.ts", "--outfile=out.js"],
     entryPath: "/repo/node_modules/esbuild/bin/esbuild",
     entryIsNative: false,
-    platform: "win32",
   });
 
   assert.equal(plan.file, process.execPath, "a JS entry runs on this Node binary");
@@ -54,26 +38,11 @@ test("planBuildToolSpawn execs a NATIVE entry directly instead of feeding it to 
     args: ["in.ts"],
     entryPath: "/repo/node_modules/esbuild/bin/esbuild",
     entryIsNative: true,
-    platform: "linux",
   });
 
   assert.equal(plan.file, "/repo/node_modules/esbuild/bin/esbuild");
   assert.deepEqual(plan.args, ["in.ts"]);
   assert.equal(plan.shell, false);
-});
-
-test("planBuildToolSpawn falls back to the .cmd shim (with a shell) on win32", () => {
-  const plan = planBuildToolSpawn({
-    binName: "esbuild",
-    args: ["in.ts"],
-    entryPath: null,
-    root: "C:\\repo",
-    platform: "win32",
-  });
-
-  assert.ok(plan.file.endsWith("esbuild.cmd"), `expected a .cmd shim, got ${plan.file}`);
-  // Node >= 20 refuses to spawn a .cmd without a shell (CVE-2024-27980 hardening).
-  assert.equal(plan.shell, true, "a .cmd only spawns through a shell");
 });
 
 test("planBuildToolSpawn falls back to the extensionless shim (no shell) elsewhere", () => {
@@ -82,7 +51,6 @@ test("planBuildToolSpawn falls back to the extensionless shim (no shell) elsewhe
     args: ["in.ts"],
     entryPath: null,
     root: "/repo",
-    platform: "linux",
   });
 
   assert.equal(plan.file, join("/repo", "node_modules", ".bin", "esbuild"));
@@ -90,20 +58,16 @@ test("planBuildToolSpawn falls back to the extensionless shim (no shell) elsewhe
   assert.equal(plan.shell, false);
 });
 
-test("planBuildToolSpawn quotes whitespace paths when it has to use a shell", () => {
-  // `C:\Users\First Last\…` is an ordinary Windows home directory, and Node does
-  // not escape arguments once `shell` is set.
+test("planBuildToolSpawn preserves whitespace paths and arguments without a shell", () => {
   const plan = planBuildToolSpawn({
     binName: "esbuild",
-    args: ["--outfile=C:\\Users\\First Last\\out.js", "--bundle"],
+    args: ["--outfile=/home/First Last/out.js", "--bundle"],
     entryPath: null,
-    root: "C:\\Users\\First Last\\repo",
-    platform: "win32",
+    root: "/home/First Last/repo",
   });
-
-  assert.ok(plan.file.startsWith('"') && plan.file.endsWith('"'), "shim path is quoted");
-  assert.equal(plan.args[0], '"--outfile=C:\\Users\\First Last\\out.js"');
-  assert.equal(plan.args[1], "--bundle", "arguments without whitespace are left alone");
+  assert.equal(plan.file, "/home/First Last/repo/node_modules/.bin/esbuild");
+  assert.deepEqual(plan.args, ["--outfile=/home/First Last/out.js", "--bundle"]);
+  assert.equal(plan.shell, false);
 });
 
 test("resolveLocalBinEntry reads the package's own bin map, never node_modules/.bin", () => {

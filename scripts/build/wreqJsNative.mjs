@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-/** Exact native binding set published by wreq-js 3.2.0. */
+/** Native bindings supported by OmniRoute for wreq-js 3.2.0. */
 export const WREQ_JS_VERSION = "3.2.0";
 
 export const WREQ_JS_NATIVE_BINDINGS = Object.freeze([
@@ -10,20 +10,6 @@ export const WREQ_JS_NATIVE_BINDINGS = Object.freeze([
     fileName: "wreq-js.android-arm64.node",
     platform: "android",
     arch: "arm64",
-  },
-  {
-    target: "darwin-arm64",
-    packageName: "@wreq-js/binding-darwin-arm64",
-    fileName: "wreq-js.darwin-arm64.node",
-    platform: "darwin",
-    arch: "arm64",
-  },
-  {
-    target: "darwin-x64",
-    packageName: "@wreq-js/binding-darwin-x64",
-    fileName: "wreq-js.darwin-x64.node",
-    platform: "darwin",
-    arch: "x64",
   },
   {
     target: "linux-arm64-gnu",
@@ -56,20 +42,6 @@ export const WREQ_JS_NATIVE_BINDINGS = Object.freeze([
     platform: "linux",
     arch: "x64",
     libc: "musl",
-  },
-  {
-    target: "win32-arm64-msvc",
-    packageName: "@wreq-js/binding-win32-arm64-msvc",
-    fileName: "wreq-js.win32-arm64-msvc.node",
-    platform: "win32",
-    arch: "arm64",
-  },
-  {
-    target: "win32-x64-msvc",
-    packageName: "@wreq-js/binding-win32-x64-msvc",
-    fileName: "wreq-js.win32-x64-msvc.node",
-    platform: "win32",
-    arch: "x64",
   },
 ]);
 

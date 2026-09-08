@@ -1,15 +1,15 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
-import fs from "fs/promises";
-import path from "path";
-import os from "os";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { requireCliToolsAuth } from "@/lib/api/requireCliToolsAuth";
 import { isValidationFailure, validateBody } from "@/shared/validation/helpers";
 import { cliAuthOnlyConfigSchema } from "@/shared/validation/schemas/cli";
-import { requireCliToolsAuth } from "@/lib/api/requireCliToolsAuth";
 import { sanitizeErrorMessage } from "@omniroute/open-sse/utils/error";
+import { exec } from "child_process";
+import fs from "fs/promises";
+import { NextResponse } from "next/server";
+import os from "os";
+import path from "path";
+import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
@@ -31,12 +31,9 @@ const PROVIDER_TYPE = "lmstudio_openai";
 // ── Check if Letta CLI is installed ────────────────────────────────────
 const checkLettaInstalled = async () => {
   try {
-    const isWindows = os.platform() === "win32";
-    const command = isWindows ? "where letta" : "which letta";
-    const env = isWindows
-      ? { ...process.env, PATH: `${process.env.APPDATA}\\npm;${process.env.PATH}` }
-      : process.env;
-    await execAsync(command, { windowsHide: true, env });
+    const command = "which letta";
+    const env = process.env;
+    await execAsync(command, { env });
     return true;
   } catch {
     // Also check if config directory exists (CLI may be installed but not on PATH)
@@ -122,10 +119,7 @@ export async function GET(request: Request) {
       backendMode: settings.preferredBackendMode || "api",
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(error) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(error) } }, { status: 500 });
   }
 }
 
@@ -246,10 +240,7 @@ export async function POST(request: Request) {
       needsRestart: true,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(error) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(error) } }, { status: 500 });
   }
 }
 
@@ -321,9 +312,6 @@ export async function DELETE(request: Request) {
       needsRestart: true,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: { message: sanitizeErrorMessage(error) } },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: { message: sanitizeErrorMessage(error) } }, { status: 500 });
   }
 }

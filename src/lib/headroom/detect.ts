@@ -150,7 +150,7 @@ export function findHeadroomBinary(): string | null {
     // shell metacharacters cannot reach a shell parser.
     const out = execFileSync("which", ["headroom"], {
       stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
+
       env: { ...process.env, PATH: buildPythonSearchPath() },
     })
       .toString()
@@ -170,7 +170,7 @@ export function findPython310(): string | null {
       // use execFileSync anyway to remove the shell entirely.
       const ver = execFileSync(candidate, ["--version"], {
         stdio: ["ignore", "pipe", "ignore"],
-        windowsHide: true,
+
         env: { ...process.env, PATH: searchPath },
       })
         .toString()

@@ -19,19 +19,9 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-export const SQLITE_PREBUILD_PLATFORMS = ["darwin", "linux", "linuxmusl", "win32"];
+export const SQLITE_PREBUILD_PLATFORMS = ["linux", "linuxmusl"];
 export const SQLITE_PREBUILD_ARCHS = ["x64", "arm64"];
 
-/**
- * Resolve the prebuild file name better-sqlite3's loader would pick for the
- * given platform/arch. Mirrors lib/binding.js: linux without a glibc runtime
- * version resolves to the linuxmusl prebuild.
- *
- * @param {string} platform - process.platform ("linux", "darwin", "win32")
- * @param {string} arch - process.arch ("x64", "arm64")
- * @param {{ glibcVersionRuntime?: string | null }} [reportHeader] - parsed
- *   process.report.getReport().header (injectable for tests)
- */
 export function sqlitePrebuildFileName(platform, arch, reportHeader) {
   const isMusl = platform === "linux" && !reportHeader?.glibcVersionRuntime;
   const target = `${isMusl ? "linuxmusl" : platform}-${arch}`;

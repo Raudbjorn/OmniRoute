@@ -4,11 +4,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  makeGitAncestryProbe,
-  readBuildSha,
-  resolveBuildProvenance,
-} from "./buildProvenance.ts";
+import { makeGitAncestryProbe, readBuildSha, resolveBuildProvenance } from "./buildProvenance.ts";
 
 import {
   MCP_CLOSURE_SPOT_CHECK_PATH,
@@ -28,7 +24,7 @@ import {
 const __filename: string = fileURLToPath(import.meta.url);
 const __dirname: string = dirname(__filename);
 const ROOT: string = join(__dirname, "..", "..");
-const npmCommand: string = process.platform === "win32" ? "npm.cmd" : "npm";
+const npmCommand: string = "npm";
 
 function runNpm(args: string[], stdio: "inherit" | "pipe" = "pipe"): string {
   const npmExecPath = process.env.npm_execpath;

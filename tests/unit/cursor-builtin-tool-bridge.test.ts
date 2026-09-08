@@ -1,5 +1,5 @@
-import test from "node:test";
 import assert from "node:assert/strict";
+import test from "node:test";
 import {
   bridgeCursorBuiltinTool,
   bridgeCursorNativeTodoWrite,
@@ -157,25 +157,6 @@ test("restricts bridge candidates according to tool_choice", () => {
       `malformed tool_choice must fail closed: ${JSON.stringify(malformed)}`
     );
   }
-});
-
-test("bridges Windows Cursor shell requests using the explicit client platform", () => {
-  const command = "New-Item -ItemType Directory -Path $env:TEMP\\cursor-probe";
-  const result = bridgeCursorBuiltinTool(
-    shellEvent({ command, workingDir: "C:\\Users\\max\\project" }),
-    defs([ptySpawn]),
-    "windows"
-  );
-  assert.deepEqual(result, {
-    toolName: "pty_spawn",
-    arguments: {
-      command: "powershell.exe",
-      args: ["-NoProfile", "-NonInteractive", "-Command", command],
-      workdir: "C:\\Users\\max\\project",
-      description: "Run Cursor-requested shell command",
-      notifyOnExit: true,
-    },
-  });
 });
 
 test("does not infer the interpreter from command text", () => {

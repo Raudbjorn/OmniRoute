@@ -78,9 +78,6 @@ async function tryKiroCliSqlite(): Promise<{
 }> {
   // Build list of candidate DB paths to probe in order.
   const candidatePaths: string[] = [join(homedir(), ".local/share/kiro-cli/data.sqlite3")];
-  if (process.env.APPDATA) {
-    candidatePaths.push(join(process.env.APPDATA, "kiro", "storage.db"));
-  }
 
   let Database: any;
   try {
@@ -104,12 +101,6 @@ async function tryKiroCliSqlite(): Promise<{
     }
 
     try {
-      // Read OIDC token (access + refresh token).
-      // Try auth_kv table first (kiro-cli Linux/macOS schema), then fallback
-      // key-value tables used by the Kiro IDE on Windows (VS Code-style storage).
-      // "kiro:auth:token" is the key Kiro IDE writes in its VS Code Extension Storage
-      // API-backed SQLite (ItemTable / storage tables) — confirmed from #3363 reporter's
-      // %APPDATA%\kiro\storage.db dump where the token starts with "aorAAAAAG".
       const tokenKeys = ["kirocli:odic:token", "kirocli:oidc:token", "kiro:auth:token"];
       let tokenData: any = null;
 
@@ -160,10 +151,6 @@ async function tryKiroCliSqlite(): Promise<{
         if (regData?.client_id) break;
       }
 
-      // Read profileArn (enterprise SSO / IDC). The kiro-cli Linux schema stores this
-      // in the `state` table; the Windows Kiro IDE schema may store it in `ItemTable`
-      // or `storage` with the same key. Probe all three so IDC users on Windows also
-      // get a valid profileArn and are not silently downgraded to the Builder ID path.
       let profileArn: string | undefined;
       const profileKey = "api.codewhisperer.profile";
       for (const table of ["state", "ItemTable", "storage"]) {
@@ -228,25 +215,7 @@ async function tryKiroCliSqlite(): Promise<{
 async function readKiroIdeProfileArn(): Promise<string | null> {
   const { readFile } = await import("fs/promises");
   const kiroProfilePaths = [
-    join(
-      process.env.APPDATA || join(homedir(), "AppData", "Roaming"),
-      "Kiro",
-      "User",
-      "globalStorage",
-      "kiro.kiroagent",
-      "profile.json"
-    ),
     join(homedir(), ".config", "Kiro", "User", "globalStorage", "kiro.kiroagent", "profile.json"),
-    join(
-      homedir(),
-      "Library",
-      "Application Support",
-      "Kiro",
-      "User",
-      "globalStorage",
-      "kiro.kiroagent",
-      "profile.json"
-    ),
   ];
   for (const profilePath of kiroProfilePaths) {
     try {

@@ -19,10 +19,10 @@
  * This makes the test self-contained regardless of /etc/hosts content.
  */
 
+import assert from "node:assert/strict";
 import fs from "node:fs";
 import { register } from "node:module";
 import test from "node:test";
-import assert from "node:assert/strict";
 
 // Register loader hook — must happen before any dnsConfig.ts import.
 register(new URL("../_cp_mock_hook.mts", import.meta.url).href, import.meta.url);
@@ -44,15 +44,13 @@ let hostIsPresent = false;
 try {
   const hostsContent = fs.readFileSync("/etc/hosts", "utf8");
   const lines = hostsContent.split(/\r?\n/);
-  hostIsPresent = [`127.0.0.1 ${RM_TEST_HOST}`, `::1 ${RM_TEST_HOST}`].every(
-    (entry) => {
-      const [ip, host] = entry.split(/\s+/);
-      return lines.some((line) => {
-        const parts = line.trim().split(/\s+/).filter(Boolean);
-        return parts.length >= 2 && parts[0] === ip && parts.includes(host);
-      });
-    },
-  );
+  hostIsPresent = [`127.0.0.1 ${RM_TEST_HOST}`, `::1 ${RM_TEST_HOST}`].every((entry) => {
+    const [ip, host] = entry.split(/\s+/);
+    return lines.some((line) => {
+      const parts = line.trim().split(/\s+/).filter(Boolean);
+      return parts.length >= 2 && parts[0] === ip && parts.includes(host);
+    });
+  });
 } catch {
   // /etc/hosts not readable — treat as absent.
 }
@@ -69,17 +67,17 @@ try {
  * goes through `tee -a <hosts file>`, elevated or not.
  */
 function assertHostsWriteSpawn(call: { command: string; args: string[] }): void {
-  if (process.platform === "win32") {
-    assert.equal(call.command, "powershell.exe", "should invoke powershell.exe");
-    return;
-  }
   const argv = [call.command, ...call.args];
   assert.ok(argv.includes("tee"), `should write hosts via tee (got: ${argv.join(" ")})`);
   assert.ok(argv.includes("-a"), `tee should append, not truncate (got: ${argv.join(" ")})`);
   if (call.command === "sudo") {
     assert.ok(call.args.includes("-S"), "sudo should use -S flag for password stdin");
   } else {
-    assert.equal(call.command, "tee", `unelevated write should invoke tee directly (got ${call.command})`);
+    assert.equal(
+      call.command,
+      "tee",
+      `unelevated write should invoke tee directly (got ${call.command})`
+    );
   }
 }
 

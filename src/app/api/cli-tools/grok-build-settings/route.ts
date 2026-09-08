@@ -8,8 +8,8 @@ import { NextResponse } from "next/server";
 import pino from "pino";
 import { z } from "zod";
 
-import { requireCliToolsAuth } from "@/lib/api/requireCliToolsAuth";
 import { guardCliConfigWrite } from "@/lib/api/cliConfigWriteGuard";
+import { requireCliToolsAuth } from "@/lib/api/requireCliToolsAuth";
 import { deleteCliToolLastConfigured, saveCliToolLastConfigured } from "@/lib/db/cliToolState";
 import { getResolvedModelCapabilities } from "@/lib/modelCapabilities";
 import { resolveApiKey } from "@/shared/services/apiKeyResolver";
@@ -17,8 +17,8 @@ import { createBackup } from "@/shared/services/backupService";
 import { getCliConfigHome, getCliRuntimeStatus } from "@/shared/services/cliRuntime";
 import {
   applyGrokBuildConfig,
-  GrokBuildConfigConflictError,
   GROK_SUBAGENT_TYPES,
+  GrokBuildConfigConflictError,
   parseGrokBuildConfig,
   resetGrokBuildConfig,
   resolveGrokBuildConfigPath,
@@ -75,7 +75,7 @@ const readConfigToml = async (configPath: string): Promise<string> => {
 
 const writeAtomic = async (filePath: string, content: string): Promise<void> => {
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  const mode = process.platform === "win32" ? undefined : 0o600;
+  const mode = 0o600;
   try {
     await fs.writeFile(tempPath, content, { encoding: "utf8", mode });
     if (mode !== undefined) await fs.chmod(tempPath, mode);

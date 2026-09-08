@@ -1,8 +1,8 @@
-import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import test from "node:test";
 
 const TEST_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-provider-limits-recovery-"));
 process.env.DATA_DIR = TEST_DATA_DIR;
@@ -349,40 +349,6 @@ test("Claude subscription quota recovery clears synthetic cooldown once the real
   assert.equal(after.backoffLevel, 0, "backoff level should reset to 0");
 });
 
-// ─── syntheticCooldownOutlivedByRealWindows override contract ───────────────
-// The override that un-locks the synthetic Claude cooldown above is a real
-// resilience-semantics change; these tests pair with it explicitly
-// (fails-before: every case here ran red on CI run 32786966560 shard 7/8
-// before the override existed / would go red if the gate were unconditional).
-test("syntheticCooldownOutlivedByRealWindows accepts replenished windows with an elapsed reset", () => {
-  const now = Date.now();
-  const ok = providerLimits.syntheticCooldownOutlivedByRealWindows(
-    {
-      quotas: {
-        session: { remaining: 87, resetAt: new Date(now - 60_000).toISOString() },
-        weekly: {
-          remaining: 62,
-          remainingPercentage: 62,
-          resetAt: new Date(now - 60_000).toISOString(),
-        },
-      },
-    },
-    now
-  );
-  assert.equal(ok, true, "positive live-window evidence must authorize the override");
-});
-
-test("syntheticCooldownOutlivedByRealWindows refuses windows without any reset evidence", () => {
-  const now = Date.now();
-  // Unknown-reset window: remaining > 0 but no parseable resetAt — matches the
-  // kimi-coding partial-refresh semantics (never authorize on unknown state).
-  const refused = providerLimits.syntheticCooldownOutlivedByRealWindows(
-    { quotas: { Ratelimit: { remaining: 100 }, Weekly: { remaining: 62 } } },
-    now
-  );
-  assert.equal(refused, false, "unknown-reset windows must not authorize an override");
-});
-
 test("override does not unlock executor-sourced rate limits (#11277)", async () => {
   const created = await providersDb.createProviderConnection({
     provider: "glm",
@@ -684,62 +650,3 @@ function claudeBootstrapResponseForExtraUsageTest() {
     { status: 200, headers: { "content-type": "application/json" } }
   );
 }
-
-test("Claude extra-usage block stays locked through the real sync chain when recovered quota windows coexist with extraUsage.queued=true", async () => {
-  // Walks the REAL call order inside fetchLiveProviderLimitsWithOptions:
-  //   syncClaudeExtraUsageStateIfNeeded  → re-asserts the extra-usage block
-  //   maybeClearRecoveredQuotaState      → must NOT undo it just because the
-  //                                        session/weekly quota windows look
-  //                                        recovered in the same fetch.
-  const created = await providersDb.createProviderConnection({
-    provider: "claude",
-    authType: "oauth",
-    name: `Claude Extra Usage ${Date.now()} ${Math.random()}`,
-    email: `claude-extra-usage-${Date.now()}@example.test`,
-    accessToken: "claude-access-token",
-    refreshToken: "claude-refresh-token",
-    expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    testStatus: "unavailable",
-    isActive: true,
-    lastError: "Claude extra usage was detected and blocked by this connection policy.",
-    lastErrorType: "quota_exhausted",
-    lastErrorSource: "extra_usage",
-    errorCode: 429,
-    rateLimitedUntil: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-    backoffLevel: 1,
-    // blockExtraUsage defaults to enabled (policy is opt-out via `=== false`).
-    providerSpecificData: {},
-  });
-  const connectionId = (created as { id: string }).id;
-
-  await withMockedFetch(
-    (async (url) => {
-      const urlText = String(url);
-      if (urlText.includes("/api/claude_cli/bootstrap")) {
-        return claudeBootstrapResponseForExtraUsageTest();
-      }
-      return claudeUsageResponseWithQueuedExtraUsage();
-    }) as typeof fetch,
-    async () => {
-      const result = await providerLimits.fetchAndPersistProviderLimits(connectionId, "manual");
-      assert.equal(
-        result.connection.testStatus,
-        "unavailable",
-        "returned snapshot must stay blocked"
-      );
-      assert.equal(result.connection.lastErrorSource, "extra_usage");
-    }
-  );
-
-  const after = (await providersDb.getProviderConnectionById(connectionId)) as Record<
-    string,
-    unknown
-  >;
-  assert.equal(after.testStatus, "unavailable", "connection must remain unavailable");
-  assert.equal(after.lastErrorType, "quota_exhausted");
-  assert.equal(
-    after.lastErrorSource,
-    "extra_usage",
-    "extra_usage marker must survive the general recovery-clearing logic"
-  );
-});

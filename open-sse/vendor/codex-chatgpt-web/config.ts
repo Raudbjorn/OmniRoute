@@ -1,19 +1,18 @@
 /* Adapted from miuuyy/codex-chatgpt-web v4.0.7 commit b59d7dc51b84fb1f465ff1d00f5207f3b2b4a494 (MIT). */
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import {
   chmodSync,
+  closeSync,
+  existsSync,
   mkdirSync,
   openSync,
-  closeSync,
+  readFileSync,
   renameSync,
   rmSync,
   writeFileSync,
-  readFileSync,
-  existsSync,
 } from "node:fs";
-import { homedir } from "node:os";
-import { basename, delimiter, dirname, isAbsolute, join, resolve, sep, win32 } from "node:path";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
+import { basename, delimiter, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type { CodexProviderConfig } from "./types";
 import { VERSION } from "./version";
 
@@ -129,41 +128,13 @@ export function getConfigPath(): string {
   return join(getConfigDir(), "config.json");
 }
 
-export function isWindowsPipeEndpoint(value: string): boolean {
-  return /^\\\\\.\\pipe\\[A-Za-z0-9._-]+$/.test(value);
-}
-
 export function defaultBrokerEndpoint(home = getConfigDir(), platform = process.platform): string {
-  if (platform !== "win32") return join(home, "runtime", "turn-broker.sock");
-  const identity = createHash("sha256")
-    .update(resolve(home).toLowerCase())
-    .digest("hex")
-    .slice(0, 20);
-  return `\\\\.\\pipe\\codex-chatgpt-web-${identity}`;
+  return join(home, "runtime", "turn-broker.sock");
 }
 
 export function resolveBrokerEndpoint(value: string): string {
   const expanded = expandUserPath(value);
-  return isWindowsPipeEndpoint(expanded) ? expanded : resolve(expanded);
-}
-
-const atomicWaitCell = new Int32Array(new SharedArrayBuffer(4));
-const WINDOWS_RENAME_RETRY_DELAYS_MS = [25, 50, 100, 150, 250, 350, 500] as const;
-
-function renameAtomicFile(source: string, destination: string): void {
-  for (let attempt = 0; ; attempt += 1) {
-    try {
-      renameSync(source, destination);
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      const transientWindowsError =
-        process.platform === "win32" && (code === "EBUSY" || code === "EPERM" || code === "EACCES");
-      const delay = WINDOWS_RENAME_RETRY_DELAYS_MS[attempt];
-      if (!transientWindowsError || delay === undefined) throw error;
-      Atomics.wait(atomicWaitCell, 0, 0, delay);
-    }
-  }
+  return resolve(expanded);
 }
 
 export function atomicWriteFile(path: string, data: string | Uint8Array): void {
@@ -179,7 +150,7 @@ export function atomicWriteFile(path: string, data: string | Uint8Array): void {
   try {
     writeFileSync(fd, data);
     closeSync(fd);
-    renameAtomicFile(temp, path);
+    renameSync(temp, path);
   } catch (error) {
     try {
       closeSync(fd);
@@ -229,8 +200,7 @@ export function defaultConfig(mode: RuntimeMode = "browser-only"): AppConfig {
 
 export function currentRuntimeCommand(): string[] {
   const executableName = basename(process.execPath).toLowerCase();
-  const bunExecutable =
-    executableName === "bun" || executableName === "bun.exe" ? installedBunExecutable() : undefined;
+  const bunExecutable = executableName === "bun" ? installedBunExecutable() : undefined;
   return runtimeCommandForProcess({
     launcher: process.env.CODEX_CHATGPT_WEB_LAUNCHER,
     executable: process.execPath,
@@ -248,8 +218,8 @@ export function installedBunExecutable({
   pathValue?: string;
   candidates?: Array<string | null | undefined>;
 } = {}): string {
-  const executableName = platform === "win32" ? "bun.exe" : "bun";
-  const pathDelimiter = platform === "win32" ? ";" : delimiter;
+  const executableName = "bun";
+  const pathDelimiter = delimiter;
   const pathCandidates = pathValue
     .split(pathDelimiter)
     .map((part) => part.trim().replace(/^"(.*)"$/, "$1"))
@@ -295,7 +265,7 @@ export function runtimeCommandForProcess({
   }
   executable = resolve(executable);
   const executableName = basename(executable).toLowerCase();
-  if (executableName === "bun" || executableName === "bun.exe") {
+  if (executableName === "bun") {
     if (!entry || entry.endsWith("/[eval]") || entry === "[eval]") {
       throw new Error("Cannot install a service from an evaluated Bun script");
     }
@@ -309,8 +279,7 @@ export function runtimeCommandForProcess({
 }
 
 function inside(path: string, root: string): boolean {
-  const normalize = (value: string) =>
-    process.platform === "win32" ? resolve(value).toLowerCase() : resolve(value);
+  const normalize = (value: string) => resolve(value);
   const normalizedPath = normalize(path);
   const normalizedRoot = normalize(root);
   return normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}${sep}`);
@@ -335,18 +304,6 @@ export function defaultChromeExecutable(
   platform = process.platform,
   programFiles = process.env.PROGRAMFILES
 ): string {
-  if (platform === "darwin") {
-    return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-  }
-  if (platform === "win32") {
-    return win32.join(
-      programFiles || "C:\\Program Files",
-      "Google",
-      "Chrome",
-      "Application",
-      "chrome.exe"
-    );
-  }
   return "/usr/bin/google-chrome";
 }
 
@@ -429,11 +386,7 @@ function parseConfig(value: unknown, path: string): AppConfig {
     throw new Error(`Launcher browserHostDescriptorPath must be absolute in ${path}`);
   }
   const brokerEndpoint = expandUserPath(parsed.brokerSocketPath!);
-  if (process.platform === "win32") {
-    if (!isWindowsPipeEndpoint(brokerEndpoint)) {
-      throw new Error(`Windows brokerSocketPath must be a named pipe in ${path}`);
-    }
-  } else if (!isAbsolute(brokerEndpoint) || isWindowsPipeEndpoint(brokerEndpoint)) {
+  if (!isAbsolute(brokerEndpoint)) {
     throw new Error(`brokerSocketPath must be an absolute Unix socket path in ${path}`);
   }
   if (!/^[A-Za-z0-9_-]{40,}$/.test(parsed.controlToken!))

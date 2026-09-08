@@ -21,15 +21,15 @@
  * Idempotent: re-running with the same `--provider-id` updates the
  * entry in place (path + baseURL) without duplicating it.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync, cpSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { printHeading, printInfo, printSuccess, printError } from "../io.mjs";
-import { t } from "../i18n.mjs";
 import { resolveActiveContext } from "../contexts.mjs";
+import { t } from "../i18n.mjs";
+import { printError, printHeading, printInfo, printSuccess } from "../io.mjs";
 import { guardHostConfigTarget } from "../utils/config-home-guard.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -62,16 +62,7 @@ function resolveOpenCodeDirs() {
 
   let configDir;
   let dataDir;
-  if (platform === "darwin") {
-    // macOS: ~/Library/Application Support/opencode
-    configDir = join(home, "Library", "Application Support", "opencode");
-    dataDir = configDir; // OC uses the same root for config + data on macOS
-  } else if (platform === "win32") {
-    const appdata = process.env.APPDATA || join(home, "AppData", "Roaming");
-    const localAppdata = process.env.LOCALAPPDATA || join(home, "AppData", "Local");
-    configDir = join(appdata, "opencode");
-    dataDir = join(localAppdata, "opencode");
-  } else {
+  {
     // Linux + everything else: XDG-style
     configDir = xdgConfig ? join(xdgConfig, "opencode") : join(home, ".config", "opencode");
     dataDir = xdgData ? join(xdgData, "opencode") : join(home, ".local", "share", "opencode");
@@ -239,24 +230,12 @@ export function resolveOpenCodeAuthProviderId(providerId) {
   return providerId.startsWith("opencode-") ? providerId : `opencode-${providerId}`;
 }
 
-/**
- * Pure resolver for the `opencode auth login` spawn descriptor. Extracted so the
- * platform-branching logic is unit-testable without mocking child_process or
- * mutating process.platform.
- *
- * On Windows the `opencode` binary is an npm `.cmd` shim that Node's hardened
- * spawnSync (post CVE-2024-27980) refuses to run without a shell — spawning it
- * with shell:false throws EINVAL (#7913). Mirror the same fix already applied to
- * codex (resolveCodexSpawn in launch-codex.mjs, crediting #6263) and
- * qodercli/Auggie (#6263/#6304): shell:true on win32, shell:false everywhere else.
- */
 export function resolveOpenCodeAuthSpawn(providerId, platform = process.platform) {
-  const isWin = platform === "win32";
   const authProviderId = resolveOpenCodeAuthProviderId(providerId);
   return {
-    command: isWin ? "opencode.cmd" : "opencode",
+    command: "opencode",
     args: ["auth", "login", "--provider", authProviderId],
-    options: { stdio: "inherit", shell: isWin },
+    options: { stdio: "inherit", shell: false },
   };
 }
 
