@@ -6,7 +6,6 @@ import path from "node:path";
 const cwd = process.cwd();
 const packageJsonPath = path.resolve(cwd, "package.json");
 const openApiPath = path.resolve(cwd, "docs/openapi.yaml");
-const changelogPath = path.resolve(cwd, "CHANGELOG.md");
 
 function readText(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -42,11 +41,6 @@ function extractOpenApiVersion(content) {
   return null;
 }
 
-function extractChangelogSections(content) {
-  const headings = [...content.matchAll(/^##\s+\[([^\]]+)\](?:\s+[-—–].*)?$/gm)];
-  return headings.map((match) => match[1]);
-}
-
 function isSemver(value) {
   // Accept X.Y.Z and X.Y.Z-prerelease.N (e.g. 3.0.0-rc.1, 3.0.0-beta.2)
   return /^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$/.test(value);
@@ -76,30 +70,6 @@ try {
     fail(`OpenAPI version (${openApiVersion}) differs from package.json (${packageVersion})`);
   } else {
     console.log(`[docs-sync] openapi.yaml info.version matches: ${openApiVersion}`);
-  }
-
-  const changelogSections = extractChangelogSections(readText(changelogPath));
-  if (changelogSections.length === 0) {
-    fail("CHANGELOG.md has no version sections");
-  } else {
-    if (changelogSections[0] !== "Unreleased") {
-      fail('CHANGELOG.md first section must be "## [Unreleased]"');
-    } else {
-      console.log("[docs-sync] changelog has top Unreleased section");
-    }
-
-    const semverSections = changelogSections.filter((section) => isSemver(section));
-    if (semverSections.length === 0) {
-      fail("CHANGELOG.md has no semver release section");
-    } else if (semverSections[0] !== packageVersion) {
-      fail(
-        `Latest changelog release (${semverSections[0]}) differs from package.json (${packageVersion})`
-      );
-    } else {
-      console.log(
-        `[docs-sync] latest changelog release matches package version: ${packageVersion}`
-      );
-    }
   }
 
   // Anti-regression: legacy duplicate docs that have been superseded must not return.

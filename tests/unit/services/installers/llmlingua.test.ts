@@ -49,6 +49,17 @@ test("llmlingua installer: resolveSpawnArgs builds node server spawn arguments",
   assert.equal(spawnArgs.env.PORT, "20135");
 });
 
+test("llmlingua installer: startup recreates a missing server without replacing existing files", () => {
+  const script = llmlingua.getServerScriptPath();
+  const original = fs.readFileSync(script, "utf8");
+  fs.unlinkSync(script);
+  llmlingua.resolveSpawnArgs();
+  assert.equal(fs.readFileSync(script, "utf8"), original);
+  fs.writeFileSync(script, original + "\n// retained");
+  llmlingua.resolveSpawnArgs();
+  assert.equal(fs.readFileSync(script, "utf8"), original + "\n// retained");
+});
+
 test.after(() => {
   core.resetDbInstance();
   fs.rmSync(TEST_DATA_DIR, { recursive: true, force: true });

@@ -4,12 +4,7 @@ import http from "node:http";
 import { Worker } from "node:worker_threads";
 import { createRequire } from "node:module";
 const workerFile = process.env.LLMLINGUA_WORKER_FILE;
-const { z } = createRequire(workerFile)("zod");
-const schema = z.object({
-  text: z.string().min(1).max(1_000_000),
-  model: z.string().max(200).optional(),
-  compressionRate: z.number().gt(0).lte(1).optional(),
-});
+let schema;
 let worker;
 let pending;
 let nextId = 0;
@@ -51,6 +46,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   if (req.method !== "POST" || req.url !== "/compress") { reply(res, 404, { error: "Not found" }); return; }
+  if (!schema) {
+    try {
+      const { z } = createRequire(workerFile)("zod");
+      schema = z.object({
+        text: z.string().min(1).max(1_000_000),
+        model: z.string().max(200).optional(),
+        compressionRate: z.number().gt(0).lte(1).optional(),
+      });
+    } catch {
+      req.resume();
+      reply(res, 503, { error: "Compression runtime unavailable" }); return;
+    }
+  }
   // Only one request may own the worker's pending response callback at a time.
   if (busy) { reply(res, 429, { error: "Compressor busy" }); return; }
   busy = true;

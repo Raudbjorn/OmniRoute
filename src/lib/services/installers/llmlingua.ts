@@ -110,6 +110,10 @@ export async function update(): Promise<InstallResult> {
 export function resolveSpawnArgs(port = LLMLINGUA_DEFAULT_PORT): SpawnArgs {
   const serverScript = getServerScriptPath();
   const installDir = getLlmlinguaInstallDir();
+  if (!fs.existsSync(serverScript)) {
+    fs.mkdirSync(installDir, { recursive: true });
+    fs.writeFileSync(serverScript, LLMLINGUA_SERVER_SOURCE, "utf8");
+  }
   const { workerFile, execArgv } = resolveWorkerFile();
 
   return {
