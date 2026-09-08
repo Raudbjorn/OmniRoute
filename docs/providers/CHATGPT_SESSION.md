@@ -17,7 +17,7 @@ implementation under `open-sse/vendor/codex-chatgpt-web/`.
 | ----------------------- | ---------------------- | ---------------------------- |
 | `chatgpt-session`       | `/v1/chat/completions` | any OpenAI-compatible client |
 | `chatgpt-web-codex`     | `/v1/responses`        | the native Codex CLI only    |
-| `chatgpt-web` (retired) | —                      | fails closed with HTTP 410   |
+| `chatgpt-web`           | `/v1/chat/completions` | any OpenAI-compatible client |
 
 ## Prerequisites
 
