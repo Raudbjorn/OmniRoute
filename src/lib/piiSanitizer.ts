@@ -261,9 +261,18 @@ export function sanitizePII(text: string, isStreaming = false): SanitizeResult {
       }
     }
 
-    for (const range of mergedRanges) {
-      sanitized = sanitized.slice(0, range.start) + range.replacement + sanitized.slice(range.end);
+    // mergedRanges is descending and non-overlapping; emit left-to-right in a
+    // single pass. Splicing per range is O(ranges x length) — a 1.72MB body
+    // with many matches spent ~1.9s here versus ~79ms for the regex scans
+    // themselves (#pii-redaction-quadratic).
+    const parts: string[] = [];
+    let cursor = 0;
+    for (let i = mergedRanges.length - 1; i >= 0; i--) {
+      parts.push(sanitized.slice(cursor, mergedRanges[i].start), mergedRanges[i].replacement);
+      cursor = mergedRanges[i].end;
     }
+    parts.push(sanitized.slice(cursor));
+    sanitized = parts.join("");
   }
 
   return {
